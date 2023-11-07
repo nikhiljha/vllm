@@ -203,6 +203,7 @@ class LLMEngine:
         # operators can be applied to all workers.
         num_gpu_blocks = min(b[0] for b in num_blocks)
         num_cpu_blocks = min(b[1] for b in num_blocks)
+        num_disk_blocks = min(b[2] for b in num_blocks)
         # FIXME(woosuk): Change to debug log.
         logger.info(f"# GPU blocks: {num_gpu_blocks}, "
                     f"# CPU blocks: {num_cpu_blocks}")
@@ -214,6 +215,7 @@ class LLMEngine:
 
         self.cache_config.num_gpu_blocks = num_gpu_blocks
         self.cache_config.num_cpu_blocks = num_cpu_blocks
+        self.cache_config.num_disk_blocks = num_disk_blocks
 
         # Initialize the cache.
         self._run_workers("init_cache_engine", cache_config=self.cache_config)

@@ -129,12 +129,13 @@ class Worker:
         num_cpu_blocks = int(cpu_swap_space // cache_block_size)
         num_gpu_blocks = max(num_gpu_blocks, 0)
         num_cpu_blocks = max(num_cpu_blocks, 0)
+        num_disk_blocks = 1
         torch.cuda.empty_cache()
 
         # Reset the seed to ensure that the random state is not affected by
         # the model initialization and profiling.
         set_random_seed(self.model_config.seed)
-        return num_gpu_blocks, num_cpu_blocks
+        return num_gpu_blocks, num_cpu_blocks, num_disk_blocks
 
     def init_cache_engine(self, cache_config: CacheConfig) -> None:
         self.cache_config = cache_config

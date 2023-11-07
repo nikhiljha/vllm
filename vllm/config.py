@@ -200,6 +200,7 @@ class CacheConfig:
         # Will be set after profiling.
         self.num_gpu_blocks = None
         self.num_cpu_blocks = None
+        self.num_disk_blocks = None
 
     def _verify_args(self) -> None:
         if self.gpu_memory_utilization > 1.0:

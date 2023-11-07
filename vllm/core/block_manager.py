@@ -62,12 +62,14 @@ class BlockSpaceManager:
         block_size: int,
         num_gpu_blocks: int,
         num_cpu_blocks: int,
+        num_disk_blocks: int,
         watermark: float = 0.01,
         sliding_window: Optional[int] = None,
     ) -> None:
         self.block_size = block_size
         self.num_total_gpu_blocks = num_gpu_blocks
         self.num_total_cpu_blocks = num_cpu_blocks
+        self.num_total_disk_blocks = num_disk_blocks
 
         self.block_sliding_window = None
         if sliding_window is not None:
@@ -83,6 +85,8 @@ class BlockSpaceManager:
                                             num_gpu_blocks)
         self.cpu_allocator = BlockAllocator(Device.CPU, block_size,
                                             num_cpu_blocks)
+        self.disk_allocator = BlockAllocator(Device.DISK, block_size,
+                                            num_disk_blocks)
         # Mapping: seq_id -> BlockTable.
         self.block_tables: Dict[int, BlockTable] = {}
 
