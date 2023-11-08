@@ -70,7 +70,7 @@ class LLM:
         tokenizer_revision: Optional[str] = None,
         seed: int = 0,
         gpu_memory_utilization: float = 0.9,
-        swap_space: int = 4,
+        swap_space: int = 64,
         **kwargs,
     ) -> None:
         if "disable_log_stats" not in kwargs:

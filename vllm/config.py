@@ -221,10 +221,10 @@ class CacheConfig:
         msg = (f"{cpu_memory_usage / _GB:.2f} GiB out of "
                f"the {total_cpu_memory / _GB:.2f} GiB total CPU memory is "
                "allocated for the swap space.")
-        if cpu_memory_usage > 0.7 * total_cpu_memory:
-            raise ValueError("Too large swap space. " + msg)
-        elif cpu_memory_usage > 0.4 * total_cpu_memory:
-            logger.warning("Possibly too large swap space. " + msg)
+        # if cpu_memory_usage > 0.7 * total_cpu_memory:
+        #     raise ValueError("Too large swap space. " + msg)
+        # elif cpu_memory_usage > 0.4 * total_cpu_memory:
+        #     logger.warning("Possibly too large swap space. " + msg)
 
 
 class ParallelConfig:

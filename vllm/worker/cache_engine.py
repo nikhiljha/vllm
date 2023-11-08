@@ -2,6 +2,7 @@
 from typing import Dict, List, Tuple
 
 import torch
+from tensordict import MemmapTensor
 
 from vllm import cache_ops
 from vllm.config import CacheConfig, ModelConfig, ParallelConfig
@@ -95,16 +96,26 @@ class CacheEngine:
             # https://docs.nvidia.com/cuda/wsl-user-guide/index.html#known-limitations-for-linux-cuda-applications
             logger.warning("Using 'pin_memory=False' as WSL is detected. "
                            "This may slow down the performance.")
+        print('cpu blocks: ', self.num_cpu_blocks)
         for _ in range(self.num_layers):
-            key_blocks = torch.empty(
-                size=(self.num_cpu_blocks, *key_block_shape),
+            # key_blocks = torch.empty(
+            #     size=(self.num_cpu_blocks, *key_block_shape),
+            #     dtype=self.dtype,
+            #     pin_memory=pin_memory,
+            # )
+            # value_blocks = torch.empty(
+            #     size=(self.num_cpu_blocks, *value_block_shape),
+            #     dtype=self.dtype,
+            #     pin_memory=pin_memory,
+            # )
+
+            key_blocks = MemmapTensor(
+                *(self.num_cpu_blocks, *key_block_shape),
                 dtype=self.dtype,
-                pin_memory=pin_memory,
             )
-            value_blocks = torch.empty(
-                size=(self.num_cpu_blocks, *value_block_shape),
+            value_blocks = MemmapTensor(
+                *(self.num_cpu_blocks, *value_block_shape),
                 dtype=self.dtype,
-                pin_memory=pin_memory,
             )
             cpu_cache.append((key_blocks, value_blocks))
         return cpu_cache
