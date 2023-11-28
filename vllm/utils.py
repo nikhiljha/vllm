@@ -11,6 +11,7 @@ from vllm import cuda_utils
 class Device(enum.Enum):
     GPU = enum.auto()
     CPU = enum.auto()
+    DISK = enum.auto()
 
 
 class Counter:

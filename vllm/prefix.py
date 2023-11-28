@@ -22,6 +22,9 @@ class Prefix:
         # a lock to prevent multiple sequence from calculating the same prefix
         self.swap_to_gpu = False
 
+        # reference count for active (non-preempted) sequence groups using this
+        self.ref_count = 0
+
         # freq-related
         self.freq = 1
         self.alpha = 0.8
@@ -32,6 +35,13 @@ class Prefix:
     
     def match(self, tokens):
         return tokens[:self.length] == self.token_ids
+    
+    def increase_ref_count(self):
+        self.ref_count += 1
+
+    def decrease_ref_count(self) -> bool:
+        self.ref_count -= 1
+        return self.ref_count == 0
     
     # should be called if the prefix is hit for this iteration
     def update_freq(self, new_hit_rate):

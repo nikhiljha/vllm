@@ -22,9 +22,9 @@ def post_http_request(prompt: str,
     headers = {"User-Agent": "Test Client"}
     pload = {
         "prompt": prompt,
-        "prefix_pos": prefix_pos,
-        "n": n,
-        "use_beam_search": True,
+        # "prefix_pos": prefix_pos,
+        # "n": n,
+        # "use_beam_search": True,
         "temperature": 0.0,
         "max_tokens": 16,
         "stream": stream,
@@ -45,6 +45,10 @@ def get_streaming_response(response: requests.Response) -> Iterable[List[str]]:
 
 def get_response(response: requests.Response) -> List[str]:
     data = json.loads(response.content)
+    print(data)
+    print("")
+    print("")
+    print("")
     output = data["text"]
     return output
 
@@ -61,6 +65,7 @@ if __name__ == "__main__":
     api_url = f"http://{args.host}:{args.port}/generate"
     n = args.n
     stream = args.stream
+    print(stream)
 
     print(f"Prompt: {prompt!r}\n", flush=True)
     response = post_http_request(prompt, 32, api_url, n, stream)

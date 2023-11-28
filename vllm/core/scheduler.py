@@ -360,6 +360,10 @@ class Scheduler:
             self._preempt_by_swap(seq_group, blocks_to_swap_out)
         else:
             assert False, "Invalid preemption mode."
+        
+        if seq_group.prefix is not None:
+            if seq_group.dec_ref_count():
+                self._swap_out_prefix(seq_group.prefix, blocks_to_swap_out)
 
     def _preempt_by_recompute(
         self,
@@ -387,6 +391,9 @@ class Scheduler:
         seq_group: SequenceGroup,
         blocks_to_swap_in: Dict[int, int],
     ) -> None:
+        if seq_group.prefix is not None and seq_group.prefix.on_cpu:
+            # prefix.on_gpu will be set inside this function
+            self._swap_in_prefix(seq_group.prefix, blocks_to_swap_in)
         mapping = self.block_manager.swap_in(seq_group)
         blocks_to_swap_in.update(mapping)
         for seq in seq_group.get_seqs(status=SequenceStatus.SWAPPED):
