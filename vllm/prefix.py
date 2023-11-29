@@ -12,9 +12,10 @@ class Prefix:
     def __init__(self, prefix_id, token_ids, block_size):
         self.prefix_id = prefix_id
         self.token_ids = token_ids
-        self.length = len(token_ids)
-        print("prefix length: ", self.length)
-        print("block size: ", block_size)
+        self.length = (len(token_ids) // block_size) * block_size
+        # print("prefix length: ", self.length)
+        # print("block size: ", block_size)
+        # print(self.length, block_size, self.length % block_size)
         assert self.length % block_size == 0
         self.on_gpu = False
         self.on_cpu = False

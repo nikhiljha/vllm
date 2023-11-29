@@ -74,17 +74,20 @@ async def chat_worker(
     for chat in chats:
         context = ""
         context_len = 0
+        prefix_len = 0
         for message, message_len, response_len in chat:
             # Add the next request to the context, and send the request.
             assert type(context) == str
             assert type(message) == str
             context += message
             context_len += message_len
+            if prefix_len == 0:
+                prefix_len = message_len
             assert type(context) == str
             # FIXME(njha): For some reason too long context windows cause an error on the VLLM end.
             if context_len > 1024:
                 break
-            context = (await send_request(backend, api_url, context, context_len, response_len, best_of, use_beam_search))["text"][0]
+            context = (await send_request(backend, api_url, context, context_len, response_len, prefix_len, best_of, use_beam_search))["text"][0]
             TOTAL_REQUESTS += 1
             assert type(context) == str
             context_len += response_len
@@ -105,6 +108,7 @@ async def send_request(
     prompt: str,
     prompt_len: int,
     output_len: int,
+    prefix_len: int,
     best_of: int,
     use_beam_search: bool,
 ) -> None:
@@ -121,6 +125,7 @@ async def send_request(
             "top_p": 1.0,
             "max_tokens": output_len,
             "ignore_eos": True,
+            "prefix_pos": prefix_len,
             "stream": False,
         }
     elif backend == "tgi":
