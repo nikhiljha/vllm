@@ -181,15 +181,16 @@ class Worker:
             prompt_len = len(prompt_tokens)
             prompt_lens.append(prompt_len)
             prefix_len = 0
-            if seq_group_metadata.prefix is not None and seq_group_metadata.prefix.on_gpu:
-                prefix_len = seq_group_metadata.prefix.get_length()
-                assert prefix_len % self.block_size == 0
-                prompt_tokens = prompt_tokens[prefix_len:]
-                prefix_block_table = seq_group_metadata.prefix.get_block_table_num()
-                prefix_block_tables.append(prefix_block_table)
-                max_num_blocks_per_seq_prompt = max(max_num_blocks_per_seq_prompt, len(prefix_block_table))
-            else:
-                prefix_block_tables.append([])
+            prefix_block_table = []
+            for prefix in seq_group_metadata.prefixes:
+                if prefix.on_gpu:
+                    prefix_len += prefix.length
+                    assert prefix_len % self.block_size == 0
+                    prefix_block_table += prefix.get_block_table_num()
+            prompt_tokens = prompt_tokens[prefix_len:]
+            max_num_blocks_per_seq_prompt = max(max_num_blocks_per_seq_prompt, len(prefix_block_table))
+            prefix_block_tables.append(prefix_block_table)
+
             # actual prompt lens
             context_lens.append(prefix_len)
             subquery_lens.append(prompt_len-prefix_len)
@@ -245,9 +246,10 @@ class Worker:
                 selected_token_start_idx += max_seq_len
 
                 # set the prefix state
-                if seq_group_metadata.prefix is not None and seq_group_metadata.prefix.swap_to_gpu:
-                    seq_group_metadata.prefix.on_gpu = True
-                    seq_group_metadata.prefix.swap_to_gpu = False
+                for prefix in seq_group_metadata.prefixes:
+                    if prefix.swap_to_gpu:
+                        prefix.on_gpu = True
+                        prefix.swap_to_gpu = False
                 continue
 
             seq_ids = list(seq_group_metadata.seq_data.keys())

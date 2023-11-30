@@ -183,12 +183,12 @@ class Scheduler:
                 seq_lens = new_seq_lens
 
                 seq_group = self.waiting.pop(0)
-                # swap in the prefix if it is on CPU
-                if seq_group.prefix is not None and seq_group.prefix.on_cpu:
-                    # prefix.on_gpu will be set inside this function
-                    print("*** swapping in prefix")
-                    self._swap_in_prefix(seq_group.prefix, blocks_to_swap_in)
-                # if the prefix hasn't been compuated, allocate blocks for it and set prefix.swap_to_gpu to True
+                # swap in the prefixes if they are on CPU
+                for prefix in seq_group.prefixes:
+                    if prefix.on_cpu:
+                        # prefix.on_gpu will be set inside this function
+                        self._swap_in_prefix(prefix, blocks_to_swap_in)
+                # if the prefix hasn't been computed, allocate blocks for it and set prefix.swap_to_gpu to True
                 self._allocate(seq_group)
                 self.running.append(seq_group)
                 num_curr_seqs += num_new_seqs
@@ -301,7 +301,7 @@ class Scheduler:
                 seq_data=seq_data,
                 sampling_params=seq_group.sampling_params,
                 block_tables=block_tables,
-                prefix=seq_group.prefix,
+                prefixes=seq_group.prefixes,
             )
             seq_group_metadata_list.append(seq_group_metadata)
         return seq_group_metadata_list, scheduler_outputs
@@ -320,7 +320,8 @@ class Scheduler:
 
     def _allocate(self, seq_group: SequenceGroup) -> None:
         self.block_manager.allocate(seq_group)
-        seq_group.prefix.increase_ref_count()
+        for prefix in seq_group.prefixes:
+            prefix.increase_ref_count()
         for seq in seq_group.get_seqs():
             seq.status = SequenceStatus.RUNNING
 
@@ -367,8 +368,8 @@ class Scheduler:
         else:
             assert False, "Invalid preemption mode."
         
-        if seq_group.prefix is not None:
-            seq_group.prefix.decrease_ref_count()
+        for prefix in seq_group.prefixes:
+            prefix.decrease_ref_count()
 
     def _preempt_by_recompute(
         self,

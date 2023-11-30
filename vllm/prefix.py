@@ -9,10 +9,11 @@ from typing import List
 
 
 class Prefix:
-    def __init__(self, prefix_id, token_ids, block_size):
+    def __init__(self, prefix_id, token_ids, offset, block_size):
         self.prefix_id = prefix_id
         self.token_ids = token_ids
-        self.length = (len(token_ids) // block_size) * block_size
+        self.offset = offset
+        self.length = ((len(token_ids) - offset) // block_size) * block_size
         # print("prefix length: ", self.length)
         # print("block size: ", block_size)
         # print(self.length, block_size, self.length % block_size)
@@ -34,8 +35,8 @@ class Prefix:
     def get_block_table_num(self) -> List[int]:
         return [block.block_number for block in self.block_table]
     
-    def match(self, tokens):
-        return tokens[:self.length] == self.token_ids
+    def match(self, tokens, offset):
+        return tokens[:self.length + self.offset] == self.token_ids and self.offset == offset
     
     def increase_ref_count(self):
         self.ref_count += 1
@@ -76,23 +77,24 @@ class PrefixPool:
         self.prefixes_hash = {}
         self.block_size = block_size
     
-    def add_prefix(self, token_ids: List[int]):
+    # TODO: offset
+    def add_prefix(self, token_ids: List[int], offset: int = 0):
         # generate prefix_id
         prefix_id = len(self.prefixes)
         # create a new prefix
-        prefix = Prefix(prefix_id, token_ids, self.block_size)
+        prefix = Prefix(prefix_id, token_ids, offset, self.block_size)
         self.prefixes.append(prefix)
         # @TODO: compute the hash of the prefix
-        prefix_hash = hash(tuple(prefix.token_ids))
+        prefix_hash = hash((tuple(prefix.token_ids), prefix.offset))
         # self.prefixes_hash[prefix.prefix_id] = prefix_hash
         self.prefixes_hash[prefix_hash] = prefix.prefix_id
         return prefix
         
     # @TODO: this one should also come with a method to identify the prefix
-    def efficient_search(self, token_ids: List[int]):
+    def efficient_search(self, token_ids: List[int], offset: int = 0):
         # improve this search
         for prefix in self.prefixes:
-            if prefix.match(token_ids):
+            if prefix.match(token_ids, offset):
                 return prefix
         return None
     

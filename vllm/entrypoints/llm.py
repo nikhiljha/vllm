@@ -108,7 +108,7 @@ class LLM:
         prompts: Optional[Union[str, List[str]]] = None,
         sampling_params: Optional[SamplingParams] = None,
         prompt_token_ids: Optional[List[List[int]]] = None,
-        prefix_pos: Optional[Union[int, List[int]]] = None,
+        prefix_pos: Optional[Union[List[int], List[List[int]]]] = None,
         use_tqdm: bool = True,
     ) -> List[RequestOutput]:
         """Generates the completions for the input prompts.
@@ -135,6 +135,8 @@ class LLM:
         if isinstance(prompts, str):
             # Convert a single prompt to a list.
             prompts = [prompts]
+            if prefix_pos is not None:
+                prefix_pos = [prefix_pos]
         if prompts is not None and prompt_token_ids is not None:
             if len(prompts) != len(prompt_token_ids):
                 raise ValueError("The lengths of prompts and prompt_token_ids "
@@ -150,7 +152,7 @@ class LLM:
             num_requests = len(prompt_token_ids)
         for i in range(num_requests):
             prompt = prompts[i] if prompts is not None else None
-            prefix_pos_i = prefix_pos[i] if prefix_pos is not None else None
+            prefix_pos_i = prefix_pos[i] if prefix_pos is not None else []
             if prompt_token_ids is None:
                 token_ids = None
             else:
@@ -163,7 +165,7 @@ class LLM:
         prompt: Optional[str],
         sampling_params: SamplingParams,
         prompt_token_ids: Optional[List[int]],
-        prefix_pos: Optional[int],
+        prefix_pos: Optional[List[int]],
     ) -> None:
         request_id = str(next(self.request_counter))
         self.llm_engine.add_request(request_id, prompt, sampling_params,
