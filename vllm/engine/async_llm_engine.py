@@ -357,7 +357,7 @@ class AsyncLLMEngine:
         sampling_params: SamplingParams,
         prompt_token_ids: Optional[List[int]] = None,
         arrival_time: Optional[float] = None,
-        prefix_pos: Optional[int] = None,
+        prefix_pos: Optional[List[int]] = [],
     ) -> AsyncStream:
         if self.log_requests:
             shortened_prompt = prompt
@@ -397,7 +397,7 @@ class AsyncLLMEngine:
     async def generate(
             self,
             prompt: Optional[str],
-            prefix_pos: Optional[int],
+            prefix_pos: Optional[List[int]],
             sampling_params: SamplingParams,
             request_id: str,
             prompt_token_ids: Optional[List[int]] = None) -> RequestOutput:

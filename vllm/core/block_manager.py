@@ -97,8 +97,9 @@ class BlockSpaceManager:
         seq = seq_group.get_seqs()[0]
         num_required_blocks = len(seq.logical_token_blocks)
 
-        if seq_group.prefix is not None and seq_group.prefix.on_gpu:
-            num_required_blocks -= seq_group.prefix.get_length() // self.block_size 
+        for prefix in seq_group.prefixes:
+            if prefix.on_gpu:
+                num_required_blocks -= prefix.get_length() // self.block_size
 
         if self.block_sliding_window is not None:
             num_required_blocks = min(num_required_blocks,
@@ -119,19 +120,19 @@ class BlockSpaceManager:
         block_table: BlockTable = []
         prefix_block_table: BlockTable = []
         num_prefix_blocks = 0
-        if seq_group.prefix is not None:
+        for prefix in seq_group.prefixes:
             # prefix is already on gpu or will be swapped in before the actual computation
-            if seq_group.prefix.on_gpu:
-                num_prompt_blocks -= seq_group.prefix.get_length() // self.block_size
-                for block in seq_group.prefix.block_table:
+            if prefix.on_gpu:
+                num_prompt_blocks -= prefix.get_length() // self.block_size
+                for block in prefix.block_table:
                     block.ref_count += seq_group.num_seqs()
                     block_table.append(block)
                 # TODO: will need to perform the copy-on-write if prefix length is not a multiple of block size
                     
             # allocate blocks for the prefix, we need to calculate the prefix's kv in this run
-            elif not seq_group.prefix.swap_to_gpu:
-                num_prefix_blocks = seq_group.prefix.get_length() // self.block_size
-                seq_group.prefix.swap_to_gpu = True
+            elif not prefix.swap_to_gpu:
+                num_prefix_blocks += prefix.get_length() // self.block_size
+                prefix.swap_to_gpu = True
 
         for logical_idx in range(num_prompt_blocks):
             if (self.block_sliding_window is not None
@@ -150,9 +151,14 @@ class BlockSpaceManager:
         for seq in seq_group.get_seqs():
             self.block_tables[seq.seq_id] = block_table.copy()
         
-        if num_prefix_blocks > 0:
-            seq_group.prefix.block_table = prefix_block_table.copy()
-
+        table_offset = 0
+        for prefix in seq_group.prefixes:
+            if not prefix.on_gpu and not prefix.swap_to_gpu:
+                next_offset = table_offset + prefix.get_length() // self.block_size
+                prefix.block_table = prefix_block_table[table_offset:next_offset]
+                prefix.swap_to_gpu = True
+                table_offset = next_offset
+                
     def can_append_slot(self, seq_group: SequenceGroup) -> bool:
         # Simple heuristic: If there is at least one free block
         # for each sequence, we can append.
@@ -232,16 +238,16 @@ class BlockSpaceManager:
 
     def swap_in(self, seq_group: SequenceGroup) -> Dict[int, int]:
         # CPU block -> GPU block.
-        if seq_group.prefix is not None:
-            # make sure to swap in the prefix first
-            assert seq_group.prefix.on_gpu == True
+        for prefix in seq_group.prefixes:
+            assert prefix.on_gpu == False
 
         mapping: Dict[PhysicalTokenBlock, PhysicalTokenBlock] = {}
         for seq in seq_group.get_seqs(status=SequenceStatus.SWAPPED):
             new_block_table: BlockTable = []
             block_table = self.block_tables[seq.seq_id]
-            if seq_group.prefix is not None:
-                for block in seq_group.prefix.block_table:
+            
+            for prefix in seq_group.prefixes:
+                for block in prefix.block_table:
                     new_block_table.append(block)
                     block.ref_count += 1
 
@@ -300,9 +306,14 @@ class BlockSpaceManager:
             block_table = self.block_tables[seq.seq_id]
 
             for gpu_block in block_table:
-                # do not swap out the prefix
-                if seq_group.prefix is not None and gpu_block in seq_group.prefix.block_table:
-                    self.gpu_allocator.free(gpu_block)
+                # do not swap out the prefixes
+                is_prefix_block = False
+                for prefix in seq_group.prefixes:
+                    if gpu_block in prefix.block_table:
+                        self.gpu_allocator.free(gpu_block)
+                        is_prefix_block = True
+                        break
+                if is_prefix_block:
                     continue
 
                 if gpu_block in mapping:

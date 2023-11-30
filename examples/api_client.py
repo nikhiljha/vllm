@@ -15,7 +15,7 @@ def clear_line(n: int = 1) -> None:
 
 
 def post_http_request(prompt: str,
-                      prefix_pos: int,
+                      prefix_pos: List[int],
                       api_url: str,
                       n: int = 1,
                       stream: bool = False) -> requests.Response:
@@ -68,7 +68,7 @@ if __name__ == "__main__":
     print(stream)
 
     print(f"Prompt: {prompt!r}\n", flush=True)
-    response = post_http_request(prompt, 32, api_url, n, stream)
+    response = post_http_request(prompt, [32], api_url, n, stream)
 
     if stream:
         num_printed_lines = 0

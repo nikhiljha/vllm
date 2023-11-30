@@ -241,7 +241,7 @@ class LLMEngine:
         sampling_params: SamplingParams,
         prompt_token_ids: Optional[List[int]] = None,
         arrival_time: Optional[float] = None,
-        prefix_pos: Optional[int] = None,
+        prefix_pos: Optional[List[int]] = [],
     ) -> None:
         """Add a request to the engine's request pool.
 
@@ -271,21 +271,27 @@ class LLMEngine:
         seq = Sequence(seq_id, prompt, prompt_token_ids, block_size)
 
         # check prefix
-        if prefix_pos is not None:
-            if prefix_pos > 0:
-                truncated_prefix_token_ids = prompt_token_ids[:prefix_pos]
-                prefix = self.scheduler.prefix_pool.fixed_search(hash(tuple(truncated_prefix_token_ids)))
+        for i in range(len(prefix_pos)):
+            curr_pos = prefix_pos[i]
+            prev_pos = prefix_pos[i-1] if i > 0 else 0
+            
+            curr_pos = (curr_pos // block_size) * block_size
+            prev_pos = (prev_pos // block_size) * block_size
+            
+            if curr_pos > 0:
+                truncated_prefix_token_ids = prompt_token_ids[:curr_pos]
+                prefix = self.scheduler.prefix_pool.fixed_search(hash((tuple(truncated_prefix_token_ids), prev_pos)))
                 if prefix is not None:
-                    seq.prefix = prefix
+                    seq.prefixes.append(prefix)
                     # print("prefix status: ", "on gpu" if prefix.get_status() else "on cpu")
                     # prefix.update_freq(1.0)
                 else:
                     # create a new prefix
-                    seq.prefix = self.scheduler.prefix_pool.add_prefix(truncated_prefix_token_ids)
+                    seq.prefixes.append(self.scheduler.prefix_pool.add_prefix(truncated_prefix_token_ids))
 
         # Create the sequence group.
         seq_group = SequenceGroup(request_id, [seq], sampling_params,
-                                  arrival_time, seq.prefix)
+                                  arrival_time, seq.prefixes)
 
         # Add the sequence group to the scheduler.
         self.scheduler.add_seq_group(seq_group)

@@ -125,7 +125,7 @@ async def send_request(
             "top_p": 1.0,
             "max_tokens": output_len,
             "ignore_eos": True,
-            "prefix_pos": prefix_len,
+            "prefix_pos": [prefix_len],
             "stream": False,
         }
     elif backend == "tgi":
