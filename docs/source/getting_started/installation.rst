@@ -10,7 +10,7 @@ Requirements
 
 * OS: Linux
 * Python: 3.8 -- 3.11
-* GPU: compute capability 7.0 or higher (e.g., V100, T4, RTX20xx, A100, L4, etc.)
+* GPU: `compute capability <https://developer.nvidia.com/cuda-gpus>`_ 8.0 or higher (e.g., RTX30xx, RTX40xx, A100, H100 etc.)
 
 Install with pip
 ----------------

@@ -3,7 +3,7 @@ from typing import List
 from vllm.sequence import SequenceGroup
 
 
-class Policy:
+class SequencePolicy:
 
     def get_priority(
         self,
@@ -24,7 +24,7 @@ class Policy:
         )
 
 
-class FCFS(Policy):
+class FCFS(SequencePolicy):
 
     def get_priority(
         self,
@@ -34,12 +34,12 @@ class FCFS(Policy):
         return now - seq_group.arrival_time
 
 
-class PolicyFactory:
+class SequencePolicyFactory:
 
     _POLICY_REGISTRY = {
         'fcfs': FCFS,
     }
 
     @classmethod
-    def get_policy(cls, policy_name: str, **kwargs) -> Policy:
+    def get_policy(cls, policy_name: str, **kwargs) -> SequencePolicy:
         return cls._POLICY_REGISTRY[policy_name](**kwargs)

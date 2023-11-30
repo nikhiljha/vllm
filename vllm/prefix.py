@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Union
+from typing import List
 
 # Define the prefix class, which is a collection of prefix (a sequence of tokens).
 # The class contains the following main methods:

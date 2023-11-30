@@ -4,7 +4,8 @@ from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 from vllm.config import CacheConfig, SchedulerConfig
 from vllm.core.block_manager import BlockSpaceManager
-from vllm.core.policy import PolicyFactory
+from vllm.core.prefix_policy import PrefixPolicyFactory
+from vllm.core.sequence_policy import SequencePolicyFactory
 from vllm.logger import init_logger
 from vllm.sequence import (Sequence, SequenceData, SequenceGroup,
                            SequenceGroupMetadata, SequenceStatus)
@@ -67,8 +68,10 @@ class Scheduler:
         self.prompt_limit = min(self.scheduler_config.max_model_len,
                                 self.scheduler_config.max_num_batched_tokens)
 
-        # Instantiate the scheduling policy.
-        self.policy = PolicyFactory.get_policy(policy_name="fcfs")
+        # Instantiate the scheduling policies.
+        self.sequence_policy = SequencePolicyFactory.get_policy(policy_name="fcfs")
+        self.prefix_policy = PrefixPolicyFactory.get_policy(policy_name="fifo")
+
         # Create the block space manager.
         self.block_manager = BlockSpaceManager(
             block_size=self.cache_config.block_size,
@@ -183,6 +186,7 @@ class Scheduler:
                 # swap in the prefix if it is on CPU
                 if seq_group.prefix is not None and seq_group.prefix.on_cpu:
                     # prefix.on_gpu will be set inside this function
+                    print("*** swapping in prefix")
                     self._swap_in_prefix(seq_group.prefix, blocks_to_swap_in)
                 # if the prefix hasn't been compuated, allocate blocks for it and set prefix.swap_to_gpu to True
                 self._allocate(seq_group)
@@ -206,7 +210,7 @@ class Scheduler:
         # to keep all the sequence groups in the RUNNING state.
         # In this case, the policy is responsible for deciding which sequence
         # groups to preempt.
-        self.running = self.policy.sort_by_priority(now, self.running)
+        self.running = self.sequence_policy.sort_by_priority(now, self.running)
 
         # Reserve new token slots for the running sequence groups.
         running: List[SequenceGroup] = []
@@ -232,7 +236,7 @@ class Scheduler:
         self.running = running
 
         # Swap in the sequence groups in the SWAPPED state if possible.
-        self.swapped = self.policy.sort_by_priority(now, self.swapped)
+        self.swapped = self.sequence_policy.sort_by_priority(now, self.swapped)
         if not preempted:
             num_curr_seqs = sum(seq_group.get_max_num_running_seqs()
                                 for seq_group in self.running)
@@ -241,6 +245,7 @@ class Scheduler:
                 seq_group = self.swapped[0]
                 # If the sequence group cannot be swapped in, stop.
                 if not self.block_manager.can_swap_in(seq_group):
+                    # TODO(njha): See if there are any prefixes that can be evicted.
                     break
 
                 # The total number of sequences in the RUNNING state should not
@@ -315,6 +320,7 @@ class Scheduler:
 
     def _allocate(self, seq_group: SequenceGroup) -> None:
         self.block_manager.allocate(seq_group)
+        seq_group.prefix.increase_ref_count()
         for seq in seq_group.get_seqs():
             seq.status = SequenceStatus.RUNNING
 
@@ -361,10 +367,8 @@ class Scheduler:
         else:
             assert False, "Invalid preemption mode."
         
-        # if seq_group.prefix is not None:
-        #     if seq_group.prefix.decrease_ref_count():
-        #         print("*********************** Swapping OUT!")
-        #         self._swap_out_prefix(seq_group.prefix, blocks_to_swap_out)
+        if seq_group.prefix is not None:
+            seq_group.prefix.decrease_ref_count()
 
     def _preempt_by_recompute(
         self,
@@ -392,10 +396,6 @@ class Scheduler:
         seq_group: SequenceGroup,
         blocks_to_swap_in: Dict[int, int],
     ) -> None:
-        # if seq_group.prefix is not None and seq_group.prefix.on_cpu:
-        #     # prefix.on_gpu will be set inside this function
-        #     print("*********************** Swapping IN!")
-        #     self._swap_in_prefix(seq_group.prefix, blocks_to_swap_in)
         mapping = self.block_manager.swap_in(seq_group)
         blocks_to_swap_in.update(mapping)
         for seq in seq_group.get_seqs(status=SequenceStatus.SWAPPED):

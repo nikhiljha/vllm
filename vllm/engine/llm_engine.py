@@ -272,8 +272,6 @@ class LLMEngine:
 
         # check prefix
         if prefix_pos is not None:
-            # a temp workaround
-            prefix_pos = (prefix_pos // block_size) * block_size
             if prefix_pos > 0:
                 truncated_prefix_token_ids = prompt_token_ids[:prefix_pos]
                 prefix = self.scheduler.prefix_pool.fixed_search(hash(tuple(truncated_prefix_token_ids)))
