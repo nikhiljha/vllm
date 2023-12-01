@@ -70,7 +70,11 @@ class Scheduler:
 
         # Instantiate the scheduling policies.
         self.sequence_policy = SequencePolicyFactory.get_policy(policy_name="fcfs")
-        self.prefix_policy = PrefixPolicyFactory.get_policy(policy_name="fifo")
+        self.prefix_policy = PrefixPolicyFactory.get_policy(policy_name="fifo",
+        num_gpu_blocks=self.cache_config.num_gpu_blocks,
+            num_cpu_blocks=self.cache_config.num_cpu_blocks,
+            num_disk_blocks=0, # TODO(njha): Add disk blocks
+        )
 
         # Create the block space manager.
         self.block_manager = BlockSpaceManager(
@@ -186,6 +190,7 @@ class Scheduler:
                 # swap in the prefixes if they are on CPU
                 for prefix in seq_group.prefixes:
                     if prefix.on_cpu:
+                        self.prefix_policy.hit_prefix(prefix)
                         # prefix.on_gpu will be set inside this function
                         self._swap_in_prefix(prefix, blocks_to_swap_in)
                 # if the prefix hasn't been computed, allocate blocks for it and set prefix.swap_to_gpu to True
@@ -243,9 +248,16 @@ class Scheduler:
 
             while self.swapped:
                 seq_group = self.swapped[0]
-                # If the sequence group cannot be swapped in, stop.
+                # If the sequence group cannot be swapped in, try to evict some prefixes.
+                while self.block_manager.swap_in_space_required(seq_group) >= 0:
+                    next_eviction = self.prefix_policy.evict_prefix_gpu()
+                    if next_eviction == None:
+                        break
+                    self._swap_out_prefix(next_eviction, blocks_to_swap_out)
+
+                # TODO(njha): This shouldn't be necessary anymore.
+                # If the sequence group still cannot be swapped in, stop.
                 if not self.block_manager.can_swap_in(seq_group):
-                    # TODO(njha): See if there are any prefixes that can be evicted.
                     break
 
                 # The total number of sequences in the RUNNING state should not
@@ -319,6 +331,10 @@ class Scheduler:
         ]
 
     def _allocate(self, seq_group: SequenceGroup) -> None:
+        print("***********************************************************")
+        print(seq_group.prefixes)
+        print(seq_group.prefixes[0].block_table)
+        print("***********************************************************")
         self.block_manager.allocate(seq_group)
         for prefix in seq_group.prefixes:
             prefix.increase_ref_count()

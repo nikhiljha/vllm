@@ -22,7 +22,7 @@ def post_http_request(prompt: str,
     headers = {"User-Agent": "Test Client"}
     pload = {
         "prompt": prompt,
-        # "prefix_pos": prefix_pos,
+        "prefix_pos": prefix_pos,
         # "n": n,
         # "use_beam_search": True,
         "temperature": 0.0,

@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from vllm.core.block_manager import PrefixPolicy
 from vllm.prefix import Prefix
 
 
@@ -11,20 +10,15 @@ class PrefixPolicy(ABC):
     num_cpu_blocks: int
     num_disk_blocks: int
 
-    # The maximum number of blocks that can be used by the prefix policy.
-    max_gpu_blocks: int = num_gpu_blocks / 8
-    max_cpu_blocks: int = num_cpu_blocks / 8
-    max_disk_blocks: int = num_disk_blocks / 8
-
     @abstractmethod
     def hit_prefix(self, prefix: Prefix):
         """Called when a Prefix is used by a SequenceGroup. Must be called immediately after the hit (i.e. before prefix internal state is changed)."""
         ...
 
-    @abstractmethod
-    def miss_prefix(self, prefix: Prefix):
-        """Called when a Prefix is not used by a SequenceGroup."""
-        ...
+    # @abstractmethod
+    # def miss_prefix(self, prefix: Prefix):
+    #     """Called when a Prefix is not used by a SequenceGroup."""
+    #     ...
 
     @abstractmethod
     def evict_prefix_gpu(self) -> Prefix | None:
@@ -41,8 +35,8 @@ class PrefixPolicy(ABC):
 class FIFOPrefixPolicy(PrefixPolicy):
     """A prefix policy that evicts the oldest unused prefix from GPU first."""
 
-    gpu_prefix_queue: list[Prefix] = []
-    cpu_prefix_queue: list[Prefix] = []
+    gpu_prefix_queue: list[Prefix] = field(default_factory=list)
+    cpu_prefix_queue: list[Prefix] = field(default_factory=list)
 
     def hit_prefix(self, prefix: Prefix):
         if prefix.on_gpu:
@@ -54,9 +48,9 @@ class FIFOPrefixPolicy(PrefixPolicy):
         else:
             self.gpu_prefix_queue.append(prefix)
     
-    def miss_prefix(self, _):
-        # We don't need to do anything for FIFO.
-        pass
+    # def miss_prefix(self, _):
+    #     # We don't need to do anything for FIFO.
+    #     pass
 
     def evict_prefix_gpu(self) -> Prefix | None:
         if len(self.gpu_prefix_queue) != 0:

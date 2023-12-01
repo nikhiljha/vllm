@@ -1,5 +1,6 @@
 """Sequence and its related classes."""
 import copy
+from dataclasses import field
 import enum
 from typing import Dict, List, Optional, Union
 
@@ -114,11 +115,11 @@ class Sequence:
         prompt: str,
         prompt_token_ids: List[int],
         block_size: int,
-        prefixes: Optional[List[Prefix]] = [],
+        prefixes: Optional[List[Prefix]] = None
     ) -> None:
         self.seq_id = seq_id
         self.prompt = prompt
-        self.prefixes = prefixes
+        self.prefixes = [] if prefixes is None else prefixes
         self.block_size = block_size
 
         self.data = SequenceData(prompt_token_ids)

@@ -119,7 +119,7 @@ class BlockSpaceManager:
 
         block_table: BlockTable = []
         prefix_block_table: BlockTable = []
-        num_prefix_blocks = 0
+        num_prefix_blocks: list[int] = []
         for prefix in seq_group.prefixes:
             # prefix is already on gpu or will be swapped in before the actual computation
             if prefix.on_gpu:
@@ -128,10 +128,11 @@ class BlockSpaceManager:
                     block.ref_count += seq_group.num_seqs()
                     block_table.append(block)
                 # TODO: will need to perform the copy-on-write if prefix length is not a multiple of block size
+                num_prefix_blocks.append(0)
                     
             # allocate blocks for the prefix, we need to calculate the prefix's kv in this run
             elif not prefix.swap_to_gpu:
-                num_prefix_blocks += prefix.get_length() // self.block_size
+                num_prefix_blocks.append(prefix.get_length() // self.block_size)
                 prefix.swap_to_gpu = True
 
         for logical_idx in range(num_prompt_blocks):
@@ -143,7 +144,9 @@ class BlockSpaceManager:
             # Set the reference counts of the token blocks.
             block.ref_count = seq_group.num_seqs()
             block_table.append(block)
-            if logical_idx < num_prefix_blocks:
+
+            # If the block is shared with the prefix, increase the ref count.
+            if logical_idx < sum(num_prefix_blocks):
                 block.ref_count += 1
                 prefix_block_table.append(block)
 
@@ -152,12 +155,12 @@ class BlockSpaceManager:
             self.block_tables[seq.seq_id] = block_table.copy()
         
         table_offset = 0
-        for prefix in seq_group.prefixes:
-            if not prefix.on_gpu and not prefix.swap_to_gpu:
-                next_offset = table_offset + prefix.get_length() // self.block_size
-                prefix.block_table = prefix_block_table[table_offset:next_offset]
-                prefix.swap_to_gpu = True
-                table_offset = next_offset
+        for prefix, num_prefix_blocks in zip(seq_group.prefixes, num_prefix_blocks):
+            next_offset = table_offset + prefix.get_length() // self.block_size
+            print(prefix_block_table, table_offset, next_offset, num_prefix_blocks)
+            if num_prefix_blocks > 0:
+                prefix.block_table = prefix_block_table[table_offset:next_offset].copy()
+            table_offset = next_offset
                 
     def can_append_slot(self, seq_group: SequenceGroup) -> bool:
         # Simple heuristic: If there is at least one free block
@@ -227,6 +230,14 @@ class BlockSpaceManager:
         num_required_blocks = len(blocks) + num_swapped_seqs
         return num_free_blocks - num_required_blocks >= self.watermark_blocks
 
+    def swap_in_space_required(self, seq_group: SequenceGroup) -> bool:
+        blocks = self._get_physical_blocks(seq_group)
+        num_swapped_seqs = seq_group.num_seqs(status=SequenceStatus.SWAPPED)
+        num_free_blocks = self.gpu_allocator.get_num_free_blocks()
+        # NOTE: This should match the logic in can_swap_in().
+        num_required_blocks = len(blocks) + num_swapped_seqs
+        return num_required_blocks + self.watermark_blocks - num_free_blocks
+
     def can_swap_in_prefix(self, prefix: Prefix) -> bool:
         blocks = prefix.block_table
         num_free_blocks = self.gpu_allocator.get_num_free_blocks()
@@ -271,6 +282,7 @@ class BlockSpaceManager:
 
     def swap_in_prefix(self, prefix: Prefix) -> Dict[int, int]:
         # CPU block -> GPU block.
+        print("*********** SWAPPING IN PREFIX!!")
         mapping: Dict[PhysicalTokenBlock, PhysicalTokenBlock] = {}
         new_block_table = []
         block_table = prefix.block_table
@@ -336,6 +348,7 @@ class BlockSpaceManager:
     def swap_out_prefix(self, prefix: Prefix) -> Dict[int, int]:
         # GPU block -> CPU block.
         # make sure all the reference seq are finished or swapped out before swapping out the prefix
+        print("*********** SWAPPING OUT PREFIX!!")
         mapping: Dict[PhysicalTokenBlock, PhysicalTokenBlock] = {}
         new_block_table = []
         block_table = prefix.block_table
