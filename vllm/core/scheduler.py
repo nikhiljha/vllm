@@ -333,7 +333,8 @@ class Scheduler:
     def _allocate(self, seq_group: SequenceGroup) -> None:
         print("***********************************************************")
         print(seq_group.prefixes)
-        print(seq_group.prefixes[0].block_table)
+        if len(seq_group.prefixes) > 0:
+            print(seq_group.prefixes[0].block_table)
         print("***********************************************************")
         self.block_manager.allocate(seq_group)
         for prefix in seq_group.prefixes:
@@ -441,6 +442,7 @@ class Scheduler:
     ) -> None:
         mapping = self.block_manager.swap_in_prefix(prefix)
         blocks_to_swap_in.update(mapping)
+        prefix.on_cpu = False
         prefix.on_gpu = True
 
     def _swap_out_prefix(

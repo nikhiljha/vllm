@@ -51,8 +51,8 @@ def sample_chats(
     # Simplify the format of the dataset into tokenized (message, response length) pairs.
     dataset = [
         [(prompt, input_len, output_len) for prompt, input_len, output_len in [
-            (data["conversations"][i]["value"], len(data["conversations"][i]["value"]), len(tokenizer(data["conversations"][i]["value"]).input_ids))
-            for i in range(0, len(data["conversations"]), 2)
+            (data["conversations"][i * 2]["value"], len(tokenizer(data["conversations"][i * 2]["value"]).input_ids), len(tokenizer(data["conversations"][i * 2 + 1]["value"]).input_ids))
+            for i in range(len(data["conversations"]) // 2)
         ] if 4 < input_len < 1024 and 4 < output_len < 1024]
         # FIXME(njha): We should sample from the entire dataset instead of just the beginning.
         for data in dataset[0:num_chats * 2]
@@ -125,7 +125,7 @@ async def send_request(
             "top_p": 1.0,
             "max_tokens": output_len,
             "ignore_eos": True,
-            "prefix_pos": [prefix_len],
+            "prefix_pos": [],
             "stream": False,
         }
     elif backend == "tgi":

@@ -357,8 +357,10 @@ class AsyncLLMEngine:
         sampling_params: SamplingParams,
         prompt_token_ids: Optional[List[int]] = None,
         arrival_time: Optional[float] = None,
-        prefix_pos: Optional[List[int]] = [],
+        prefix_pos: Optional[List[int]] = None,
     ) -> AsyncStream:
+        prefix_pos = [] if prefix_pos is None else prefix_pos
+        
         if self.log_requests:
             shortened_prompt = prompt
             shortened_token_ids = prompt_token_ids

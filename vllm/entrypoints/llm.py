@@ -135,8 +135,11 @@ class LLM:
         if isinstance(prompts, str):
             # Convert a single prompt to a list.
             prompts = [prompts]
-            if prefix_pos is not None:
-                prefix_pos = [prefix_pos]
+            prefix_pos = [prefix_pos]
+        else:
+            if prefix_pos is None:
+                prefix_pos = [None for _ in range(len(prompts))]
+            
         if prompts is not None and prompt_token_ids is not None:
             if len(prompts) != len(prompt_token_ids):
                 raise ValueError("The lengths of prompts and prompt_token_ids "
@@ -152,12 +155,11 @@ class LLM:
             num_requests = len(prompt_token_ids)
         for i in range(num_requests):
             prompt = prompts[i] if prompts is not None else None
-            prefix_pos_i = prefix_pos[i] if prefix_pos is not None else []
             if prompt_token_ids is None:
                 token_ids = None
             else:
                 token_ids = prompt_token_ids[i]
-            self._add_request(prompt, sampling_params, token_ids, prefix_pos_i)
+            self._add_request(prompt, sampling_params, token_ids, prefix_pos[i])
         return self._run_engine(use_tqdm)
 
     def _add_request(

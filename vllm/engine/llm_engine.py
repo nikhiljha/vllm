@@ -241,7 +241,7 @@ class LLMEngine:
         sampling_params: SamplingParams,
         prompt_token_ids: Optional[List[int]] = None,
         arrival_time: Optional[float] = None,
-        prefix_pos: Optional[List[int]] = [],
+        prefix_pos: Optional[List[int]] = None,
     ) -> None:
         """Add a request to the engine's request pool.
 
@@ -259,6 +259,9 @@ class LLMEngine:
             arrival_time: The arrival time of the request. If None, we use
                 the current monotonic time.
         """
+        
+        prefix_pos = [] if prefix_pos is None else prefix_pos
+        
         if arrival_time is None:
             arrival_time = time.monotonic()
         if prompt_token_ids is None:
@@ -268,8 +271,9 @@ class LLMEngine:
         # Create the sequences.
         block_size = self.cache_config.block_size
         seq_id = next(self.seq_counter)
-        seq = Sequence(seq_id, prompt, prompt_token_ids, block_size)
 
+        prefixes = []
+        
         # check prefix
         for i in range(len(prefix_pos)):
             curr_pos = prefix_pos[i]
@@ -282,16 +286,18 @@ class LLMEngine:
                 truncated_prefix_token_ids = prompt_token_ids[:curr_pos]
                 prefix = self.scheduler.prefix_pool.fixed_search(hash((tuple(truncated_prefix_token_ids), prev_pos)))
                 if prefix is not None:
-                    seq.prefixes.append(prefix)
+                    prefixes.append(prefix)
                     # print("prefix status: ", "on gpu" if prefix.get_status() else "on cpu")
                     # prefix.update_freq(1.0)
                 else:
                     # create a new prefix
-                    seq.prefixes.append(self.scheduler.prefix_pool.add_prefix(truncated_prefix_token_ids))
+                    prefixes.append(self.scheduler.prefix_pool.add_prefix(truncated_prefix_token_ids))
+
+        seq = Sequence(seq_id, prompt, prompt_token_ids, block_size, prefixes)
 
         # Create the sequence group.
         seq_group = SequenceGroup(request_id, [seq], sampling_params,
-                                  arrival_time, seq.prefixes)
+                                  arrival_time, prefixes)
 
         # Add the sequence group to the scheduler.
         self.scheduler.add_seq_group(seq_group)
