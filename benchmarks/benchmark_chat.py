@@ -125,7 +125,8 @@ async def send_request(
             "top_p": 1.0,
             "max_tokens": output_len,
             "ignore_eos": True,
-            "prefix_pos": [],
+            # "prefix_pos": [],
+            "prefix_pos": [prefix_len],
             "stream": False,
         }
     elif backend == "tgi":
@@ -175,7 +176,7 @@ async def benchmark(
     concurrent_chats = 1,
 ) -> None:
     tasks: list[asyncio.Task] = []
-    for chat_group in grouper(chats, concurrent_chats):
+    for chat_group in grouper(chats, len(chats) // concurrent_chats):
         task = asyncio.create_task(chat_worker(backend, api_url, best_of, use_beam_search, chat_group, request_rate))
         tasks.append(task)
     await asyncio.gather(*tasks)
