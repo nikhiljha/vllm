@@ -331,11 +331,6 @@ class Scheduler:
         ]
 
     def _allocate(self, seq_group: SequenceGroup) -> None:
-        print("***********************************************************")
-        print(seq_group.prefixes)
-        if len(seq_group.prefixes) > 0:
-            print(seq_group.prefixes[0].block_table)
-        print("***********************************************************")
         self.block_manager.allocate(seq_group)
         for prefix in seq_group.prefixes:
             prefix.increase_ref_count()

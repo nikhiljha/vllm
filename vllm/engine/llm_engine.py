@@ -682,10 +682,11 @@ class LLMEngine:
                     sampling_params: SamplingParams) -> None:
         """Stop the finished sequences."""
         for stop_str in sampling_params.stop:
-            if seq.output_text.endswith(stop_str):
+            index = seq.output_text.find(stop_str)
+            if index >= 0:
                 # Truncate the output text so that the stop string is
                 # not included in the output.
-                seq.output_text = seq.output_text[:-len(stop_str)]
+                seq.output_text = seq.output_text[:index]
                 seq.status = SequenceStatus.FINISHED_STOPPED
                 return
         if seq.get_last_token_id() in sampling_params.stop_token_ids:
