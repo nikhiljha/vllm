@@ -48,6 +48,9 @@ class FIFOPrefixPolicy(PrefixPolicy):
         else:
             self.gpu_prefix_queue.append(prefix)
     
+    def need_to_evict_gpu(self) -> bool:
+        return sum(prefix.num_blocks for prefix in self.gpu_prefix_queue) > self.num_gpu_blocks // 22
+    
     # def miss_prefix(self, _):
     #     # We don't need to do anything for FIFO.
     #     pass

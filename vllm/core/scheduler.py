@@ -185,17 +185,26 @@ class Scheduler:
                 if num_paddings > self.scheduler_config.max_paddings:
                     break
                 seq_lens = new_seq_lens
-
                 seq_group = self.waiting.pop(0)
+
                 # swap in the prefixes if they are on CPU
                 for prefix in seq_group.prefixes:
+                    self.prefix_policy.hit_prefix(prefix)
                     if prefix.on_cpu:
-                        self.prefix_policy.hit_prefix(prefix)
                         # prefix.on_gpu will be set inside this function
                         self._swap_in_prefix(prefix, blocks_to_swap_in)
+
                 # if the prefix hasn't been computed, allocate blocks for it and set prefix.swap_to_gpu to True
                 self._allocate(seq_group)
                 self.running.append(seq_group)
+
+                # swap out some prefixes if we can and we need to
+                while self.prefix_policy.need_to_evict_gpu():
+                    next_eviction = self.prefix_policy.evict_prefix_gpu()
+                    if next_eviction == None:
+                        break
+                    self._swap_out_prefix(next_eviction, blocks_to_swap_out)
+
                 num_curr_seqs += num_new_seqs
                 scheduled.append(seq_group)
 

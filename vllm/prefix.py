@@ -14,6 +14,7 @@ class Prefix:
         self.token_ids = token_ids
         self.offset = offset
         self.length = ((len(token_ids) - offset) // block_size) * block_size
+        self.num_blocks = self.length // block_size
         # print("prefix length: ", self.length)
         # print("block size: ", block_size)
         # print(self.length, block_size, self.length % block_size)
