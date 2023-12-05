@@ -44,6 +44,7 @@ def main(args: argparse.Namespace):
 
         llm.generate(prompt_token_ids=dummy_prompt_token_ids,
                      sampling_params=sampling_params,
+                     prefix_pos=[[args.input_len // 2]] * args.batch_size,
                      use_tqdm=False)
 
         end_time = time.perf_counter()

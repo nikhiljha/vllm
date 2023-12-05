@@ -157,7 +157,7 @@ class BlockSpaceManager:
         table_offset = 0
         for prefix, num_prefix_blocks in zip(seq_group.prefixes, num_prefix_blocks):
             next_offset = table_offset + prefix.get_length() // self.block_size
-            print(prefix_block_table, table_offset, next_offset, num_prefix_blocks)
+            # print(prefix_block_table, table_offset, next_offset, num_prefix_blocks)
             if num_prefix_blocks > 0:
                 prefix.block_table = prefix_block_table[table_offset:next_offset].copy()
             table_offset = next_offset

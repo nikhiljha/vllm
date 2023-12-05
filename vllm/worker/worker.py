@@ -231,8 +231,7 @@ class Worker:
         for i, seq_group_metadata in enumerate(seq_group_metadata_list):
             if seq_group_metadata.is_prompt:
                 # We need to do this in this loop as we need to know max_seq_len
-                assert len(
-                    seq_ids) == 1, "Prompt input should have only one seq."
+                assert len(seq_ids) == 1, "Prompt input should have only one seq."
                 sampling_params = seq_group_metadata.sampling_params
                 assert len(prompt_lens) == len(seq_group_metadata_list)
                 # here is the subprompt len
