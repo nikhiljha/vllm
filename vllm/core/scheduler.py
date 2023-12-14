@@ -1,6 +1,6 @@
 import enum
 import time
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 from vllm.config import CacheConfig, SchedulerConfig
 from vllm.core.block_manager import BlockSpaceManager
@@ -183,15 +183,19 @@ class Scheduler:
                 seq_group = self.waiting.pop(0)
 
                 # Evict the oldest prefixes if necessary.
-                while self.prefix_pool.get_num_on(PrefixLocation.GPU) >= self.prefix_pool.max_prefixes[PrefixLocation.GPU]:
-                    prefix_to_swap_out = self.prefix_pool.next_prefix_to_evict(
-                        PrefixLocation.GPU,
-                        lambda prefix_id: prefix_id not in [group.prefix.prefix_id for group in self.running] + [seq_group.prefix.prefix_id] if seq_group.prefix is not None else []
-                    )
-                    if prefix_to_swap_out is not None:
-                        self._swap_out_prefix(prefix_to_swap_out, blocks_to_swap_out)
-                    else:
-                        break
+                def evict_older_prefixes(location: PrefixLocation, eviction_function: Callable[[Prefix], None]):
+                    while self.prefix_pool.get_num_on(location) >= self.prefix_pool.max_prefixes[location]:
+                        prefix_to_swap_out = self.prefix_pool.next_prefix_to_evict(
+                            location,
+                            lambda prefix_id: prefix_id not in [group.prefix.prefix_id for group in self.running] + [seq_group.prefix.prefix_id] if seq_group.prefix is not None else []
+                        )
+                        if prefix_to_swap_out is not None:
+                            eviction_function(prefix_to_swap_out)
+                        else:
+                            break
+                
+                evict_older_prefixes(PrefixLocation.GPU, lambda prefix: self._swap_out_prefix(prefix, blocks_to_swap_out))
+                evict_older_prefixes(PrefixLocation.CPU, lambda prefix: self._evict_prefix(prefix))
                 
                 while self.prefix_pool.get_num_on(PrefixLocation.CPU) >= self.prefix_pool.max_prefixes[PrefixLocation.CPU]:
                     prefix_to_swap_out = self.prefix_pool.next_prefix_to_evict(

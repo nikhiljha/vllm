@@ -341,7 +341,7 @@ class BlockSpaceManager:
         return block_number_mapping
     
     def evict_prefix(self, prefix: Prefix) -> None:
-        # GPU block -> Gone
+        # CPU block -> Gone
         block_table = prefix.block_table
         for cpu_block in block_table:
             # TODO(njha): Swap to disk!
