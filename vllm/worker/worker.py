@@ -10,6 +10,7 @@ from vllm.config import (CacheConfig, ModelConfig, ParallelConfig,
 from vllm.model_executor import get_model, InputMetadata, set_random_seed
 from vllm.model_executor.parallel_utils.parallel_state import (
     initialize_model_parallel)
+from vllm.prefix import PrefixLocation
 from vllm.sampling_params import SamplingParams, SamplingType
 from vllm.sequence import SamplerOutput, SequenceData, SequenceGroupMetadata
 from vllm.worker.cache_engine import CacheEngine
@@ -181,7 +182,7 @@ class Worker:
             prompt_len = len(prompt_tokens)
             prompt_lens.append(prompt_len)
             prefix_len = 0
-            if seq_group_metadata.prefix is not None and seq_group_metadata.prefix.on_gpu:
+            if seq_group_metadata.prefix is not None and seq_group_metadata.prefix.is_on_gpu():
                 prefix_len = seq_group_metadata.prefix.get_length()
                 assert prefix_len % self.block_size == 0
                 prompt_tokens = prompt_tokens[prefix_len:]
@@ -245,9 +246,9 @@ class Worker:
                 selected_token_start_idx += max_seq_len
 
                 # set the prefix state
-                if seq_group_metadata.prefix is not None and seq_group_metadata.prefix.swap_to_gpu:
-                    seq_group_metadata.prefix.on_gpu = True
-                    seq_group_metadata.prefix.swap_to_gpu = False
+                if seq_group_metadata.prefix is not None and seq_group_metadata.prefix.get_load_in_progress():
+                    seq_group_metadata.prefix.location = PrefixLocation.GPU
+                    seq_group_metadata.prefix.set_load_in_progress(False)
                 continue
 
             seq_ids = list(seq_group_metadata.seq_data.keys())

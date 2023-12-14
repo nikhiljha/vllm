@@ -93,7 +93,7 @@ class BlockSpaceManager:
         seq = seq_group.get_seqs()[0]
         num_required_blocks = len(seq.logical_token_blocks)
 
-        if seq_group.prefix is not None and seq_group.prefix.on_gpu:
+        if seq_group.prefix is not None and seq_group.prefix.is_on_gpu():
             num_required_blocks -= seq_group.prefix.get_length() // self.block_size 
 
         if self.block_sliding_window is not None:
@@ -117,7 +117,7 @@ class BlockSpaceManager:
         num_prefix_blocks = 0
         if seq_group.prefix is not None:
             # prefix is already on gpu or will be swapped in before the actual computation
-            if seq_group.prefix.on_gpu:
+            if seq_group.prefix.is_on_gpu():
                 num_prompt_blocks -= seq_group.prefix.get_length() // self.block_size
                 for block in seq_group.prefix.block_table:
                     block.ref_count += seq_group.num_seqs()
@@ -125,9 +125,9 @@ class BlockSpaceManager:
                 # TODO: will need to perform the copy-on-write if prefix length is not a multiple of block size
                     
             # allocate blocks for the prefix, we need to calculate the prefix's kv in this run
-            elif not seq_group.prefix.swap_to_gpu:
+            elif not seq_group.prefix.get_load_in_progress():
                 num_prefix_blocks = seq_group.prefix.get_length() // self.block_size
-                seq_group.prefix.swap_to_gpu = True
+                seq_group.prefix.set_load_in_progress(True)
 
         for logical_idx in range(num_prompt_blocks):
             if (self.block_sliding_window is not None
@@ -265,7 +265,7 @@ class BlockSpaceManager:
         new_block_table = []
         block_table = prefix.block_table
 
-        for cpu_block in enumerate(block_table):
+        for i, cpu_block in enumerate(block_table):
             # ref_count = 1
             gpu_block = self.gpu_allocator.allocate()
             mapping[cpu_block] = gpu_block

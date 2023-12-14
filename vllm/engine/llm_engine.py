@@ -10,6 +10,7 @@ from vllm.engine.arg_utils import EngineArgs
 from vllm.engine.ray_utils import RayWorker, initialize_cluster, ray
 from vllm.logger import init_logger
 from vllm.outputs import RequestOutput
+from vllm.prefix import PrefixMissType
 from vllm.sampling_params import SamplingParams
 from vllm.sequence import (SamplerOutput, Sequence, SequenceGroup,
                            SequenceGroupMetadata, SequenceGroupOutputs,
@@ -272,7 +273,7 @@ class LLMEngine:
 
         # check prefix
         if prefix_pos is not None:
-            # a temp workaround
+            # TODO(njha): Support partial block sizes-- for now, we only support full block sizes.
             prefix_pos = (prefix_pos // block_size) * block_size
             if prefix_pos > 0:
                 truncated_prefix_token_ids = prompt_token_ids[:prefix_pos]
@@ -284,6 +285,7 @@ class LLMEngine:
                 else:
                     # create a new prefix
                     seq.prefix = self.scheduler.prefix_pool.add_prefix(truncated_prefix_token_ids)
+                    self.scheduler.prefix_pool.miss_prefix(seq.prefix.prefix_id, PrefixMissType.COMPULSORY)
 
         # Create the sequence group.
         seq_group = SequenceGroup(request_id, [seq], sampling_params,

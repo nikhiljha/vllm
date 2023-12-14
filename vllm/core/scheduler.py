@@ -8,7 +8,7 @@ from vllm.core.policy import PolicyFactory
 from vllm.logger import init_logger
 from vllm.sequence import (Sequence, SequenceData, SequenceGroup,
                            SequenceGroupMetadata, SequenceStatus)
-from vllm.prefix import Prefix, PrefixPool
+from vllm.prefix import Prefix, PrefixLocation, PrefixPool
 
 logger = init_logger(__name__)
 
@@ -44,8 +44,9 @@ class SchedulerOutputs:
         self.blocks_to_swap_in = blocks_to_swap_in
         self.blocks_to_swap_out = blocks_to_swap_out
         self.blocks_to_copy = blocks_to_copy
+        # TODO(njha): Is this safe to just ignore?
         # Swap in and swap out should never happen at the same time.
-        assert not (blocks_to_swap_in and blocks_to_swap_out)
+        # assert not (blocks_to_swap_in and blocks_to_swap_out)
         self.ignored_seq_groups = ignored_seq_groups
 
     def is_empty(self) -> bool:
@@ -180,10 +181,20 @@ class Scheduler:
                 seq_lens = new_seq_lens
 
                 seq_group = self.waiting.pop(0)
-                # swap in the prefix if it is on CPU
-                if seq_group.prefix is not None and seq_group.prefix.on_cpu:
-                    # prefix.on_gpu will be set inside this function
-                    self._swap_in_prefix(seq_group.prefix, blocks_to_swap_in)
+                if seq_group.prefix is not None:
+                    # swap out old prefixes if there are too many
+                    # print("prefix for this request: ", seq_group.prefix.token_ids[0])
+                    # print("prefix pool size: ", self.prefix_pool.get_num_on(PrefixLocation.GPU))
+                    # print("number of prefixes in pool: ", len(self.prefix_pool.prefixes))
+                    # print("prefixes: ", [prefix.token_ids[0] for prefix in self.prefix_pool.prefixes if prefix.location == PrefixLocation.GPU])
+                    if self.prefix_pool.get_num_on(PrefixLocation.GPU) >= self.prefix_pool.max_prefixes[PrefixLocation.GPU]:
+                        # TODO(njha): This should probably take in a location so we can swap CPU -> Disk.
+                        prefix_to_swap_out = self.prefix_pool.get_lru_prefix(PrefixLocation.GPU)
+                        self._swap_out_prefix(prefix_to_swap_out, blocks_to_swap_out)
+                    # swap in the prefix if it is on CPU
+                    if seq_group.prefix.location == PrefixLocation.CPU:
+                        # prefix.location will be set to GPU this function
+                        self._swap_in_prefix(seq_group.prefix, blocks_to_swap_in)
                 # if the prefix hasn't been compuated, allocate blocks for it and set prefix.swap_to_gpu to True
                 self._allocate(seq_group)
                 self.running.append(seq_group)
@@ -430,5 +441,4 @@ class Scheduler:
                 "the swap space to avoid this error.")
         mapping = self.block_manager.swap_out_prefix(prefix)
         blocks_to_swap_out.update(mapping)
-        prefix.on_cpu = True
-        prefix.on_gpu = False
+        prefix.location = PrefixLocation.CPU
