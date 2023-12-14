@@ -4,7 +4,7 @@ import enum
 from typing import Dict, List, Optional, Union
 
 from vllm.block import LogicalTokenBlock
-from vllm.prefix import Prefix
+from vllm.prefix import Prefix, PrefixPool
 from vllm.sampling_params import SamplingParams
 
 PromptLogprobs = List[Optional[Dict[int, float]]]
@@ -350,6 +350,7 @@ class SequenceGroupMetadata:
         seq_data: Dict[int, SequenceData],
         sampling_params: SamplingParams,
         block_tables: Dict[int, List[int]],
+        prefix_pool: Optional[PrefixPool] = None,
         prefix: Optional[Prefix] = None,
     ) -> None:
         self.request_id = request_id
@@ -357,6 +358,7 @@ class SequenceGroupMetadata:
         self.seq_data = seq_data
         self.sampling_params = sampling_params
         self.block_tables = block_tables
+        self.prefix_pool = prefix_pool
         self.prefix = prefix
 
 

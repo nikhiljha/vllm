@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from vllm.block import PhysicalTokenBlock
 from vllm.sequence import Sequence, SequenceGroup, SequenceStatus
 from vllm.utils import Device
-from vllm.prefix import PrefixPool, Prefix
+from vllm.prefix import Prefix
 
 
 class BlockAllocator:
@@ -339,6 +339,15 @@ class BlockSpaceManager:
             for gpu_block, cpu_block in mapping.items()
         }
         return block_number_mapping
+    
+    def evict_prefix(self, prefix: Prefix) -> None:
+        # GPU block -> Gone
+        block_table = prefix.block_table
+        for cpu_block in block_table:
+            # TODO(njha): Swap to disk!
+            # Free the GPU block swapped out to CPU.
+            assert cpu_block.ref_count == 1
+            self.cpu_allocator.free(cpu_block)
 
     def _free_block_table(self, block_table: BlockTable) -> None:
         for block in set(block_table):

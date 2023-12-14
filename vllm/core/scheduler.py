@@ -181,16 +181,38 @@ class Scheduler:
                 seq_lens = new_seq_lens
 
                 seq_group = self.waiting.pop(0)
+
+                # Evict the oldest prefixes if necessary.
+                while self.prefix_pool.get_num_on(PrefixLocation.GPU) >= self.prefix_pool.max_prefixes[PrefixLocation.GPU]:
+                    prefix_to_swap_out = self.prefix_pool.next_prefix_to_evict(
+                        PrefixLocation.GPU,
+                        lambda prefix_id: prefix_id not in [group.prefix.prefix_id for group in self.running] + [seq_group.prefix.prefix_id] if seq_group.prefix is not None else []
+                    )
+                    if prefix_to_swap_out is not None:
+                        self._swap_out_prefix(prefix_to_swap_out, blocks_to_swap_out)
+                    else:
+                        break
+                
+                while self.prefix_pool.get_num_on(PrefixLocation.CPU) >= self.prefix_pool.max_prefixes[PrefixLocation.CPU]:
+                    prefix_to_swap_out = self.prefix_pool.next_prefix_to_evict(
+                        PrefixLocation.CPU,
+                        lambda prefix_id: prefix_id not in [group.prefix.prefix_id for group in self.running] + [seq_group.prefix.prefix_id] if seq_group.prefix is not None else []
+                    )
+                    if prefix_to_swap_out is not None:
+                        self._evict_prefix(prefix_to_swap_out)
+                    else:
+                        break
+
                 if seq_group.prefix is not None:
                     # swap out old prefixes if there are too many
                     # print("prefix for this request: ", seq_group.prefix.token_ids[0])
                     # print("prefix pool size: ", self.prefix_pool.get_num_on(PrefixLocation.GPU))
                     # print("number of prefixes in pool: ", len(self.prefix_pool.prefixes))
                     # print("prefixes: ", [prefix.token_ids[0] for prefix in self.prefix_pool.prefixes if prefix.location == PrefixLocation.GPU])
-                    if self.prefix_pool.get_num_on(PrefixLocation.GPU) >= self.prefix_pool.max_prefixes[PrefixLocation.GPU]:
-                        # TODO(njha): This should probably take in a location so we can swap CPU -> Disk.
-                        prefix_to_swap_out = self.prefix_pool.get_lru_prefix(PrefixLocation.GPU)
-                        self._swap_out_prefix(prefix_to_swap_out, blocks_to_swap_out)
+
+                    # Update cache state
+                    self.prefix_pool.hit_prefix(seq_group.prefix)
+
                     # swap in the prefix if it is on CPU
                     if seq_group.prefix.location == PrefixLocation.CPU:
                         # prefix.location will be set to GPU this function
@@ -307,6 +329,7 @@ class Scheduler:
                 seq_data=seq_data,
                 sampling_params=seq_group.sampling_params,
                 block_tables=block_tables,
+                prefix_pool=self.prefix_pool,
                 prefix=seq_group.prefix,
             )
             seq_group_metadata_list.append(seq_group_metadata)
@@ -441,4 +464,12 @@ class Scheduler:
                 "the swap space to avoid this error.")
         mapping = self.block_manager.swap_out_prefix(prefix)
         blocks_to_swap_out.update(mapping)
-        prefix.location = PrefixLocation.CPU
+        print("prefix swapped out: ", prefix.token_ids[0])
+        self.prefix_pool.set_location(prefix, PrefixLocation.CPU)
+    
+    def _evict_prefix(
+        self,
+        prefix: Prefix,
+    ) -> None:
+        self.block_manager.evict_prefix(prefix)
+        self.prefix_pool.set_location(prefix, PrefixLocation.NONE)

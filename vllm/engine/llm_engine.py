@@ -285,7 +285,7 @@ class LLMEngine:
                 else:
                     # create a new prefix
                     seq.prefix = self.scheduler.prefix_pool.add_prefix(truncated_prefix_token_ids)
-                    self.scheduler.prefix_pool.miss_prefix(seq.prefix.prefix_id, PrefixMissType.COMPULSORY)
+                    self.scheduler.prefix_pool.miss_prefix(PrefixMissType.COMPULSORY)
 
         # Create the sequence group.
         seq_group = SequenceGroup(request_id, [seq], sampling_params,

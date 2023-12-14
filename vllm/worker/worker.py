@@ -247,7 +247,7 @@ class Worker:
 
                 # set the prefix state
                 if seq_group_metadata.prefix is not None and seq_group_metadata.prefix.get_load_in_progress():
-                    seq_group_metadata.prefix.location = PrefixLocation.GPU
+                    seq_group_metadata.prefix_pool.set_location(seq_group_metadata.prefix, PrefixLocation.GPU)
                     seq_group_metadata.prefix.set_load_in_progress(False)
                 continue
 
