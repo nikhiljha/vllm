@@ -1,3 +1,4 @@
+from collections import defaultdict
 import enum
 import time
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
@@ -9,6 +10,7 @@ from vllm.logger import init_logger
 from vllm.sequence import (Sequence, SequenceData, SequenceGroup,
                            SequenceGroupMetadata, SequenceStatus)
 from vllm.prefix import Prefix, PrefixLocation, PrefixPool
+from vllm.utils import Device
 
 logger = init_logger(__name__)
 
@@ -33,16 +35,14 @@ class SchedulerOutputs:
         scheduled_seq_groups: List[SequenceGroup],
         prompt_run: bool,
         num_batched_tokens: int,
-        blocks_to_swap_in: Dict[int, int],
-        blocks_to_swap_out: Dict[int, int],
+        blocks_to_swap: Dict[Device, Dict[Device, Dict[int, int]]],
         blocks_to_copy: Dict[int, List[int]],
         ignored_seq_groups: List[SequenceGroup],
     ) -> None:
         self.scheduled_seq_groups = scheduled_seq_groups
         self.prompt_run = prompt_run
         self.num_batched_tokens = num_batched_tokens
-        self.blocks_to_swap_in = blocks_to_swap_in
-        self.blocks_to_swap_out = blocks_to_swap_out
+        self.blocks_to_swap = blocks_to_swap
         self.blocks_to_copy = blocks_to_copy
         # TODO(njha): Is this safe to just ignore?
         # Swap in and swap out should never happen at the same time.
@@ -50,9 +50,13 @@ class SchedulerOutputs:
         self.ignored_seq_groups = ignored_seq_groups
 
     def is_empty(self) -> bool:
+        for device in self.blocks_to_swap:
+            for other_device in self.blocks_to_swap[device]:
+                if len(self.blocks_to_swap[device][other_device]) != 0:
+                    # There are values that need to be swapped.
+                    return False
         # NOTE: We do not consider the ignored sequence groups.
-        return (not self.scheduled_seq_groups and not self.blocks_to_swap_in
-                and not self.blocks_to_swap_out and not self.blocks_to_copy)
+        return (not self.scheduled_seq_groups and not self.blocks_to_copy)
 
 
 class Scheduler:
@@ -119,8 +123,7 @@ class Scheduler:
 
     def _schedule(self) -> SchedulerOutputs:
         # Blocks that need to be swaped or copied before model execution.
-        blocks_to_swap_in: Dict[int, int] = {}
-        blocks_to_swap_out: Dict[int, int] = {}
+        blocks_to_swap: Dict[Device, Dict[Device, Dict[int, int]]] = defaultdict(lambda: defaultdict(dict))
         blocks_to_copy: Dict[int, List[int]] = {}
 
         # Fix the current time.
@@ -193,7 +196,7 @@ class Scheduler:
                         else:
                             break
                 
-                evict_older_prefixes(PrefixLocation.GPU, lambda prefix: self._swap_out_prefix(prefix, blocks_to_swap_out))
+                evict_older_prefixes(PrefixLocation.GPU, lambda prefix: self._swap_out_prefix(prefix, blocks_to_swap[Device.GPU][Device.CPU]))
                 evict_older_prefixes(PrefixLocation.CPU, lambda prefix: self._evict_prefix(prefix))
                 
                 while self.prefix_pool.get_num_on(PrefixLocation.CPU) >= self.prefix_pool.max_prefixes[PrefixLocation.CPU]:
@@ -219,7 +222,7 @@ class Scheduler:
                     # swap in the prefix if it is on CPU
                     if seq_group.prefix.location == PrefixLocation.CPU:
                         # prefix.location will be set to GPU this function
-                        self._swap_in_prefix(seq_group.prefix, blocks_to_swap_in)
+                        self._swap_in_prefix(seq_group.prefix, blocks_to_swap[Device.CPU][Device.GPU])
                 # if the prefix hasn't been compuated, allocate blocks for it and set prefix.swap_to_gpu to True
                 self._allocate(seq_group)
                 self.running.append(seq_group)
@@ -231,8 +234,7 @@ class Scheduler:
                     scheduled_seq_groups=scheduled,
                     prompt_run=True,
                     num_batched_tokens=len(seq_lens) * max(seq_lens),
-                    blocks_to_swap_in=blocks_to_swap_in,
-                    blocks_to_swap_out=blocks_to_swap_out,
+                    blocks_to_swap=blocks_to_swap,
                     blocks_to_copy=blocks_to_copy,
                     ignored_seq_groups=ignored_seq_groups,
                 )
@@ -253,12 +255,12 @@ class Scheduler:
                 if self.running:
                     # Preempt the lowest-priority sequence groups.
                     victim_seq_group = self.running.pop(-1)
-                    self._preempt(victim_seq_group, blocks_to_swap_out)
+                    self._preempt(victim_seq_group, blocks_to_swap[Device.GPU][Device.CPU])
                     preempted.append(victim_seq_group)
                 else:
                     # No other sequence groups can be preempted.
                     # Preempt the current sequence group.
-                    self._preempt(seq_group, blocks_to_swap_out)
+                    self._preempt(seq_group, blocks_to_swap[Device.GPU][Device.CPU])
                     preempted.append(seq_group)
                     break
             else:
@@ -287,7 +289,7 @@ class Scheduler:
                     break
 
                 seq_group = self.swapped.pop(0)
-                self._swap_in(seq_group, blocks_to_swap_in)
+                self._swap_in(seq_group, blocks_to_swap[Device.CPU][Device.GPU])
                 self._append_slot(seq_group, blocks_to_copy)
                 num_curr_seqs += num_new_seqs
                 self.running.append(seq_group)
@@ -303,8 +305,7 @@ class Scheduler:
             scheduled_seq_groups=self.running,
             prompt_run=False,
             num_batched_tokens=num_batched_tokens,
-            blocks_to_swap_in=blocks_to_swap_in,
-            blocks_to_swap_out=blocks_to_swap_out,
+            blocks_to_swap=blocks_to_swap,
             blocks_to_copy=blocks_to_copy,
             ignored_seq_groups=[],
         )

@@ -191,8 +191,7 @@ class _AsyncLLMEngine(LLMEngine):
         output = await self._run_workers_async(
             "execute_model",
             seq_group_metadata_list=seq_group_metadata_list,
-            blocks_to_swap_in=scheduler_outputs.blocks_to_swap_in,
-            blocks_to_swap_out=scheduler_outputs.blocks_to_swap_out,
+            blocks_to_swap=scheduler_outputs.blocks_to_swap,
             blocks_to_copy=scheduler_outputs.blocks_to_copy,
         )
 

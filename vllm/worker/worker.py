@@ -14,7 +14,7 @@ from vllm.prefix import PrefixLocation
 from vllm.sampling_params import SamplingParams, SamplingType
 from vllm.sequence import SamplerOutput, SequenceData, SequenceGroupMetadata
 from vllm.worker.cache_engine import CacheEngine
-from vllm.utils import get_gpu_memory
+from vllm.utils import Device, get_gpu_memory
 
 
 class Worker:
@@ -363,18 +363,21 @@ class Worker:
     def execute_model(
         self,
         seq_group_metadata_list: List[SequenceGroupMetadata],
-        blocks_to_swap_in: Dict[int, int],
-        blocks_to_swap_out: Dict[int, int],
+        blocks_to_swap: Dict[Device, Dict[Device, Dict[int, int]]],
         blocks_to_copy: Dict[int, List[int]],
     ) -> SamplerOutput:
         # Issue cache operations.
         issued_cache_op = False
-        if blocks_to_swap_in:
-            self.cache_engine.swap_in(blocks_to_swap_in)
-            issued_cache_op = True
-        if blocks_to_swap_out:
-            self.cache_engine.swap_out(blocks_to_swap_out)
-            issued_cache_op = True
+        for device in blocks_to_swap:
+            for target_device in blocks_to_swap[device]:
+                if device == target_device:
+                    raise ValueError(
+                        "device and target_device must be different")
+                block_table = blocks_to_swap[device][target_device]
+                if block_table:
+                    self.cache_engine.swap(device, target_device, block_table)
+                    issued_cache_op = True
+
         if blocks_to_copy:
             self.cache_engine.copy(blocks_to_copy)
             issued_cache_op = True

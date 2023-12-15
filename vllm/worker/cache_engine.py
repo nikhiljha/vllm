@@ -1,5 +1,6 @@
 """CacheEngine class for managing the KV cache."""
 from typing import Dict, List, Tuple
+from tensordict import MemmapTensor
 
 import torch
 
@@ -42,6 +43,12 @@ class CacheEngine:
         # Initialize the cache.
         self.gpu_cache = self.allocate_gpu_cache()
         self.cpu_cache = self.allocate_cpu_cache()
+        self.disk_cache = self.allocate_disk_cache()
+        self.device_caches: Dict[Device, List[KVCache]] = {
+            Device.GPU: self.gpu_cache,
+            Device.CPU: self.cpu_cache,
+            Device.DISK: self.disk_cache,
+        }
 
         # Initialize the stream for caching operations.
         self.cache_stream = torch.cuda.Stream()
@@ -108,6 +115,23 @@ class CacheEngine:
             cpu_cache.append((key_blocks, value_blocks))
         return cpu_cache
 
+    def allocate_disk_cache(self) -> List[KVCache]:
+        disk_cache: List[KVCache] = []
+        key_block_shape = self.get_key_block_shape()
+        value_block_shape = self.get_value_block_shape()
+        for _ in range(self.num_layers):
+            key_blocks = MemmapTensor(
+                # TODO: Use the filename= argument.
+                self.num_device_blocks[Device.DISK], *key_block_shape,
+                dtype=self.dtype,
+            )
+            value_blocks = MemmapTensor(
+                self.num_device_blocks[Device.DISK], *value_block_shape,
+                dtype=self.dtype,
+            )
+            disk_cache.append((key_blocks, value_blocks))
+        return disk_cache
+
     def _swap(
         self,
         src: List[KVCache],
@@ -125,12 +149,9 @@ class CacheEngine:
                                       src_to_dst)
                 event = self.events[i]
                 event.record(stream=self.cache_stream)
-
-    def swap_in(self, src_to_dst: Dict[int, int]) -> None:
-        self._swap(self.cpu_cache, self.gpu_cache, src_to_dst)
-
-    def swap_out(self, src_to_dst: Dict[int, int]) -> None:
-        self._swap(self.gpu_cache, self.cpu_cache, src_to_dst)
+    
+    def swap(self, src: Device, dst: Device, src_to_dst: Dict[int, int]) -> None:
+        self._swap(self.device_caches[src], self.device_caches[dst], src_to_dst)
 
     def copy(self, src_to_dsts: Dict[int, List[int]]) -> None:
         key_caches = [key_cache for key_cache, _ in self.gpu_cache]
