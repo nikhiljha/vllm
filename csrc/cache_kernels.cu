@@ -24,6 +24,8 @@ void swap_blocks(
     memcpy_type = cudaMemcpyDeviceToHost;
   } else if (src_device.is_cpu() && dst_device.is_cuda()) {
     memcpy_type = cudaMemcpyHostToDevice;
+  } else if (src_device.is_cpu() && dst_device.is_cpu()) {
+    memcpy_type = cudaMemcpyHostToHost;
   } else {
     TORCH_CHECK(false, "Invalid device combination");
   }

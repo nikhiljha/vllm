@@ -124,11 +124,11 @@ class CacheEngine:
                 # TODO: Use the filename= argument.
                 self.num_device_blocks[Device.DISK], *key_block_shape,
                 dtype=self.dtype,
-            )
+            ).as_tensor()
             value_blocks = MemmapTensor(
                 self.num_device_blocks[Device.DISK], *value_block_shape,
                 dtype=self.dtype,
-            )
+            ).as_tensor()
             disk_cache.append((key_blocks, value_blocks))
         return disk_cache
 
