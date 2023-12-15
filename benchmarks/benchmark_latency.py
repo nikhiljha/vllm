@@ -36,7 +36,7 @@ def main(args: argparse.Namespace):
         max_tokens=args.output_len,
     )
     print(sampling_params)
-    dummy_prompt_token_ids = [[random.randint(0, args.num_prefixes)] * args.input_len for _ in range(args.batch_size)]
+    dummy_prompt_token_ids = [[random.randrange(args.num_prefixes)] * args.input_len for _ in range(args.batch_size)]
 
     def run_to_completion(profile: bool = False):
         if profile:
@@ -92,7 +92,7 @@ if __name__ == '__main__':
                         help='trust remote code from huggingface')
     parser.add_argument('--num-prefixes',
                         type=int,
-                        default=0,
+                        default=1,
                         help='Number of unique prefixes.')
     parser.add_argument('--prefix-len',
                         type=int,

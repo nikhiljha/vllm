@@ -69,6 +69,7 @@ def run_vllm(
     n: int,
     use_beam_search: bool,
     trust_remote_code: bool,
+    prefix_len: int,
     dtype: str,
 ) -> float:
     from vllm import LLM, SamplingParams
@@ -96,6 +97,7 @@ def run_vllm(
         llm._add_request(
             prompt=prompt,
             prompt_token_ids=None,
+            prefix_pos=prefix_len,
             sampling_params=sampling_params,
         )
 
@@ -191,8 +193,8 @@ def main(args: argparse.Namespace):
         args.tokenizer, trust_remote_code=args.trust_remote_code)
     if args.dataset is None:
         # Synthesize a prompt with the given input length.
-        prompt = "hi" * (args.input_len - 1)
-        requests = [(prompt, args.input_len, args.output_len)
+        prompt = lambda: str(random.randrange(args.num_prefixes)) * (args.input_len - 1)
+        requests = [(prompt(), args.input_len, args.output_len)
                     for _ in range(args.num_prompts)]
     else:
         requests = sample_requests(args.dataset, args.num_prompts, tokenizer,
@@ -202,7 +204,7 @@ def main(args: argparse.Namespace):
         elapsed_time = run_vllm(requests, args.model, args.tokenizer,
                                 args.quantization, args.tensor_parallel_size,
                                 args.seed, args.n, args.use_beam_search,
-                                args.trust_remote_code, args.dtype)
+                                args.trust_remote_code, args.prefix_len, args.dtype)
     elif args.backend == "hf":
         assert args.tensor_parallel_size == 1
         elapsed_time = run_hf(requests, args.model, tokenizer, args.n,
@@ -262,6 +264,15 @@ if __name__ == "__main__":
     parser.add_argument('--trust-remote-code',
                         action='store_true',
                         help='trust remote code from huggingface')
+    parser.add_argument('--num-prefixes',
+                        type=int,
+                        default=1,
+                        help='Number of unique prefixes.')
+    parser.add_argument('--prefix-len',
+                        type=int,
+                        default=0,
+                        help='Length of prefix for each input in tokens.')
+
     parser.add_argument(
         '--dtype',
         type=str,
