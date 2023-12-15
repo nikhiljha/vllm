@@ -269,15 +269,13 @@ class BlockSpaceManager:
         PrefixLocation.DISK: Device.DISK
     }
     
-    def swap_prefix(self, prefix: Prefix, target: PrefixLocation, blocks_to_swap: Dict[int, int]):
+    def swap_prefix(self, prefix: Prefix, target: PrefixLocation) -> Dict[int, int]:
         # Move the prefix to the target location
         if prefix.get_location() == target:
             raise ValueError(f"Prefix {prefix.prefix_id} is already on {target}")
 
         if target == PrefixLocation.NONE:
-            self.evict_prefix(prefix)
-            prefix.set_location(target)
-            return
+            raise ValueError(f"Cannot swap to NONE, call BlockManager.evict_prefix instead")
 
         target_device = self.PREFIX_LOCATION_TO_DEVICE[target]
         mapping: Dict[PhysicalTokenBlock, PhysicalTokenBlock] = {}

@@ -89,6 +89,27 @@ class Scheduler:
         self.running: List[SequenceGroup] = []
         # Sequence groups in the SWAPPED state.
         self.swapped: List[SequenceGroup] = []
+        
+        self.logs = {
+            'swaps': {
+                (PrefixLocation.GPU, PrefixLocation.CPU): 0, 
+                (PrefixLocation.CPU, PrefixLocation.GPU): 0,
+                (PrefixLocation.CPU, PrefixLocation.DISK): 0,
+                (PrefixLocation.DISK, PrefixLocation.CPU): 0,
+                (PrefixLocation.GPU, PrefixLocation.DISK): 0,
+                (PrefixLocation.DISK, PrefixLocation.GPU): 0,
+            },
+            'hits': {
+                PrefixLocation.GPU: 0,
+                PrefixLocation.CPU: 0,
+                PrefixLocation.DISK: 0,    
+            },
+            'evictions': {
+                PrefixLocation.GPU: 0,
+                PrefixLocation.CPU: 0,
+                PrefixLocation.DISK: 0,
+            }
+        }
 
     def add_seq_group(self, seq_group: SequenceGroup) -> None:
         # Add sequence groups to the waiting queue.
@@ -213,6 +234,8 @@ class Scheduler:
 
                     # Update cache state
                     self.prefix_pool.hit_prefix(seq_group.prefix)
+                    
+                    self.logs['hits'][seq_group.prefix.location] += 1
 
                     # TODO(njha): Either fix this so PrefixLocation is a device or make it easier to convert.
                     PREFIX_LOCATION_TO_DEVICE = {
@@ -459,8 +482,9 @@ class Scheduler:
             raise RuntimeError(
                 "Aborted due to the lack of CPU swap space. Please increase "
                 "the swap space to avoid this error.")
-        mapping = self.block_manager.swap_prefix(prefix, target, blocks_to_swap)
+        mapping = self.block_manager.swap_prefix(prefix, target)
         blocks_to_swap.update(mapping)
+        self.logs['swaps'][(prefix.location, target)] += 1
         self.prefix_pool.set_location(prefix, target)
     
     def _evict_prefix(
@@ -468,4 +492,5 @@ class Scheduler:
         prefix: Prefix,
     ) -> None:
         self.block_manager.evict_prefix(prefix)
+        self.logs['evictions'][prefix.location] += 1
         self.prefix_pool.set_location(prefix, PrefixLocation.NONE)
