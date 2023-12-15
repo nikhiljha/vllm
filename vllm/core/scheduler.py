@@ -73,8 +73,7 @@ class Scheduler:
         # Create the block space manager.
         self.block_manager = BlockSpaceManager(
             block_size=self.cache_config.block_size,
-            num_gpu_blocks=self.cache_config.num_gpu_blocks,
-            num_cpu_blocks=self.cache_config.num_cpu_blocks,
+            num_device_blocks=self.cache_config.num_device_blocks,
             sliding_window=self.cache_config.sliding_window)
         
         self.prefix_pool = PrefixPool(self.cache_config.block_size)

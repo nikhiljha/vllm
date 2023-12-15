@@ -181,7 +181,6 @@ class PrefixPool:
             PrefixLocation.GPU: 1,
             PrefixLocation.CPU: 1,
             PrefixLocation.DISK: 0,
-            PrefixLocation.NONE: float("inf"),
         }
 
         # NOTE(njha -> kevwang): You can change the eviction policy here.

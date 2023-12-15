@@ -61,14 +61,12 @@ class BlockSpaceManager:
     def __init__(
         self,
         block_size: int,
-        num_gpu_blocks: int,
-        num_cpu_blocks: int,
+        num_device_blocks: dict[Device, int],
         watermark: float = 0.01,
         sliding_window: Optional[int] = None,
     ) -> None:
         self.block_size = block_size
-        self.num_total_gpu_blocks = num_gpu_blocks
-        self.num_total_cpu_blocks = num_cpu_blocks
+        self.num_total_device_blocks = num_device_blocks
 
         self.block_sliding_window = None
         if sliding_window is not None:
@@ -79,11 +77,13 @@ class BlockSpaceManager:
         self.watermark = watermark
         assert watermark >= 0.0
 
-        self.watermark_blocks = int(watermark * num_gpu_blocks)
-        self.gpu_allocator = BlockAllocator(Device.GPU, block_size,
-                                            num_gpu_blocks)
-        self.cpu_allocator = BlockAllocator(Device.CPU, block_size,
-                                            num_cpu_blocks)
+        self.watermark_blocks = int(watermark * num_device_blocks[Device.GPU])
+        self.allocators: Dict[Device, BlockAllocator] = {
+            Device.GPU: BlockAllocator(Device.GPU, block_size, num_device_blocks[Device.GPU]),
+            Device.CPU: BlockAllocator(Device.CPU, block_size, num_device_blocks[Device.CPU]),
+            Device.DISK: BlockAllocator(Device.DISK, block_size, num_device_blocks[Device.DISK])
+        }
+
         # Mapping: seq_id -> BlockTable.
         self.block_tables: Dict[int, BlockTable] = {}
 
@@ -99,7 +99,7 @@ class BlockSpaceManager:
         if self.block_sliding_window is not None:
             num_required_blocks = min(num_required_blocks,
                                       self.block_sliding_window)
-        num_free_gpu_blocks = self.gpu_allocator.get_num_free_blocks()
+        num_free_gpu_blocks = self.allocators[Device.GPU].get_num_free_blocks()
         # Use watermark to avoid frequent cache eviction.
         return (num_free_gpu_blocks - num_required_blocks >=
                 self.watermark_blocks)
@@ -134,7 +134,7 @@ class BlockSpaceManager:
                     and logical_idx >= self.block_sliding_window):
                 block = block_table[logical_idx % self.block_sliding_window]
             else:
-                block = self.gpu_allocator.allocate()
+                block = self.allocators[Device.GPU].allocate()
             # Set the reference counts of the token blocks.
             block.ref_count = seq_group.num_seqs()
             block_table.append(block)
@@ -152,7 +152,7 @@ class BlockSpaceManager:
     def can_append_slot(self, seq_group: SequenceGroup) -> bool:
         # Simple heuristic: If there is at least one free block
         # for each sequence, we can append.
-        num_free_gpu_blocks = self.gpu_allocator.get_num_free_blocks()
+        num_free_gpu_blocks = self.allocators[Device.GPU].get_num_free_blocks()
         num_seqs = seq_group.num_seqs(status=SequenceStatus.RUNNING)
         return num_seqs <= num_free_gpu_blocks
 
@@ -170,7 +170,7 @@ class BlockSpaceManager:
             else:
                 # The sequence has a new logical block.
                 # Allocate a new physical block.
-                block = self.gpu_allocator.allocate()
+                block = self.allocators[Device.GPU].allocate()
                 block_table.append(block)
                 return None
 
@@ -183,9 +183,9 @@ class BlockSpaceManager:
         else:
             # The last block is shared with other sequences.
             # Copy on Write: Allocate a new block and copy the tokens.
-            new_block = self.gpu_allocator.allocate()
+            new_block = self.allocators[Device.GPU].allocate()
             block_table[-1] = new_block
-            self.gpu_allocator.free(last_block)
+            self.allocators[Device.GPU].free(last_block)
             return last_block.block_number, new_block.block_number
 
     def fork(self, parent_seq: Sequence, child_seq: Sequence) -> None:
@@ -210,7 +210,7 @@ class BlockSpaceManager:
     def can_swap_in(self, seq_group: SequenceGroup) -> bool:
         blocks = self._get_physical_blocks(seq_group)
         num_swapped_seqs = seq_group.num_seqs(status=SequenceStatus.SWAPPED)
-        num_free_blocks = self.gpu_allocator.get_num_free_blocks()
+        num_free_blocks = self.allocators[Device.GPU].get_num_free_blocks()
         # NOTE: Conservatively, we assume that every sequence will allocate
         # at least one free block right after the swap-in.
         # NOTE: This should match the logic in can_append_slot().
@@ -219,7 +219,7 @@ class BlockSpaceManager:
 
     def can_swap_in_prefix(self, prefix: Prefix) -> bool:
         blocks = prefix.block_table
-        num_free_blocks = self.gpu_allocator.get_num_free_blocks()
+        num_free_blocks = self.allocators[Device.GPU].get_num_free_blocks()
         # NOTE: Conservatively, we assume that every sequence will allocate
         # at least one free block right after the swap-in.
         # NOTE: This should match the logic in can_append_slot().
@@ -230,7 +230,7 @@ class BlockSpaceManager:
         # CPU block -> GPU block.
         if seq_group.prefix is not None:
             # make sure to swap in the prefix first
-            assert seq_group.prefix.on_gpu == True
+            assert seq_group.prefix.is_on_gpu()
 
         mapping: Dict[PhysicalTokenBlock, PhysicalTokenBlock] = {}
         for seq in seq_group.get_seqs(status=SequenceStatus.SWAPPED):
@@ -246,11 +246,11 @@ class BlockSpaceManager:
                     gpu_block = mapping[cpu_block]
                     gpu_block.ref_count += 1
                 else:
-                    gpu_block = self.gpu_allocator.allocate()
+                    gpu_block = self.allocators[Device.GPU].allocate()
                     mapping[cpu_block] = gpu_block
                 new_block_table.append(gpu_block)
                 # Free the CPU block swapped in to GPU.
-                self.cpu_allocator.free(cpu_block)
+                self.allocators[Device.CPU].free(cpu_block)
             self.block_tables[seq.seq_id] = new_block_table
 
         block_number_mapping = {
@@ -267,11 +267,11 @@ class BlockSpaceManager:
 
         for i, cpu_block in enumerate(block_table):
             # ref_count = 1
-            gpu_block = self.gpu_allocator.allocate()
+            gpu_block = self.allocators[Device.GPU].allocate()
             mapping[cpu_block] = gpu_block
             new_block_table.append(gpu_block)
             # Free the CPU block swapped in to GPU.
-            self.cpu_allocator.free(cpu_block)
+            self.allocators[Device.CPU].free(cpu_block)
         prefix.block_table = new_block_table
 
         block_number_mapping = {
@@ -282,11 +282,11 @@ class BlockSpaceManager:
 
     def can_swap_out(self, seq_group: SequenceGroup) -> bool:
         blocks = self._get_physical_blocks(seq_group)
-        return len(blocks) <= self.cpu_allocator.get_num_free_blocks()
+        return len(blocks) <= self.allocators[Device.CPU].get_num_free_blocks()
 
     def can_swap_out_prefix(self, prefix: Prefix) -> bool:
         blocks = prefix.block_table
-        return len(blocks) <= self.cpu_allocator.get_num_free_blocks()
+        return len(blocks) <= self.allocators[Device.CPU].get_num_free_blocks()
 
     def swap_out(self, seq_group: SequenceGroup) -> Dict[int, int]:
         # GPU block -> CPU block.
@@ -298,18 +298,18 @@ class BlockSpaceManager:
             for gpu_block in block_table:
                 # do not swap out the prefix
                 if seq_group.prefix is not None and gpu_block in seq_group.prefix.block_table:
-                    self.gpu_allocator.free(gpu_block)
+                    self.allocators[Device.GPU].free(gpu_block)
                     continue
 
                 if gpu_block in mapping:
                     cpu_block = mapping[gpu_block]
                     cpu_block.ref_count += 1
                 else:
-                    cpu_block = self.cpu_allocator.allocate()
+                    cpu_block = self.allocators[Device.CPU].allocate()
                     mapping[gpu_block] = cpu_block
                 new_block_table.append(cpu_block)
                 # Free the GPU block swapped out to CPU.
-                self.gpu_allocator.free(gpu_block)
+                self.allocators[Device.GPU].free(gpu_block)
             self.block_tables[seq.seq_id] = new_block_table
 
         block_number_mapping = {
@@ -326,12 +326,12 @@ class BlockSpaceManager:
         block_table = prefix.block_table
 
         for gpu_block in block_table:
-            cpu_block = self.cpu_allocator.allocate()
+            cpu_block = self.allocators[Device.CPU].allocate()
             mapping[gpu_block] = cpu_block
             new_block_table.append(cpu_block)
             # Free the GPU block swapped out to CPU.
             assert gpu_block.ref_count == 1
-            self.gpu_allocator.free(gpu_block)
+            self.allocators[Device.GPU].free(gpu_block)
         prefix.block_table = new_block_table
 
         block_number_mapping = {
@@ -347,14 +347,14 @@ class BlockSpaceManager:
             # TODO(njha): Swap to disk!
             # Free the GPU block swapped out to CPU.
             assert cpu_block.ref_count == 1
-            self.cpu_allocator.free(cpu_block)
+            self.allocators[Device.CPU].free(cpu_block)
 
     def _free_block_table(self, block_table: BlockTable) -> None:
         for block in set(block_table):
             if block.device == Device.GPU:
-                self.gpu_allocator.free(block)
+                self.allocators[Device.GPU].free(block)
             else:
-                self.cpu_allocator.free(block)
+                self.allocators[Device.CPU].free(block)
 
     def free(self, seq: Sequence) -> None:
         if seq.seq_id not in self.block_tables:
@@ -374,7 +374,7 @@ class BlockSpaceManager:
         return [block.block_number for block in block_table]
 
     def get_num_free_gpu_blocks(self) -> int:
-        return self.gpu_allocator.get_num_free_blocks()
+        return self.allocators[Device.GPU].get_num_free_blocks()
 
     def get_num_free_cpu_blocks(self) -> int:
-        return self.cpu_allocator.get_num_free_blocks()
+        return self.allocators[Device.CPU].get_num_free_blocks()

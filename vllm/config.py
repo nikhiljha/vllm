@@ -1,11 +1,11 @@
-from typing import Optional
+from typing import Dict, Optional
 
 import torch
 from transformers import PretrainedConfig
 
 from vllm.logger import init_logger
 from vllm.transformers_utils.config import get_config
-from vllm.utils import get_cpu_memory
+from vllm.utils import Device, get_cpu_memory
 
 logger = init_logger(__name__)
 
@@ -201,9 +201,12 @@ class CacheConfig:
         self.sliding_window = sliding_window
         self._verify_args()
 
-        # Will be set after profiling.
-        self.num_gpu_blocks = None
-        self.num_cpu_blocks = None
+        # Will be set after profiling, but we set some default values here.
+        self.num_device_blocks: Dict[Device, int] = {
+            Device.GPU: 100,
+            Device.CPU: 100,
+            Device.DISK: 0,
+        }
 
     def _verify_args(self) -> None:
         if self.gpu_memory_utilization > 1.0:

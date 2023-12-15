@@ -6,7 +6,7 @@ import torch
 from vllm import cache_ops
 from vllm.config import CacheConfig, ModelConfig, ParallelConfig
 from vllm.logger import init_logger
-from vllm.utils import in_wsl
+from vllm.utils import Device, in_wsl
 
 logger = init_logger(__name__)
 
@@ -37,8 +37,7 @@ class CacheEngine:
         self.dtype = model_config.dtype
 
         self.block_size = cache_config.block_size
-        self.num_gpu_blocks = cache_config.num_gpu_blocks
-        self.num_cpu_blocks = cache_config.num_cpu_blocks
+        self.num_device_blocks = cache_config.num_device_blocks
 
         # Initialize the cache.
         self.gpu_cache = self.allocate_gpu_cache()
@@ -73,12 +72,12 @@ class CacheEngine:
         value_block_shape = self.get_value_block_shape()
         for _ in range(self.num_layers):
             key_blocks = torch.empty(
-                size=(self.num_gpu_blocks, *key_block_shape),
+                size=(self.num_device_blocks[Device.GPU], *key_block_shape),
                 dtype=self.dtype,
                 device="cuda",
             )
             value_blocks = torch.empty(
-                size=(self.num_gpu_blocks, *value_block_shape),
+                size=(self.num_device_blocks[Device.GPU], *value_block_shape),
                 dtype=self.dtype,
                 device="cuda",
             )
@@ -97,12 +96,12 @@ class CacheEngine:
                            "This may slow down the performance.")
         for _ in range(self.num_layers):
             key_blocks = torch.empty(
-                size=(self.num_cpu_blocks, *key_block_shape),
+                size=(self.num_device_blocks[Device.CPU], *key_block_shape),
                 dtype=self.dtype,
                 pin_memory=pin_memory,
             )
             value_blocks = torch.empty(
-                size=(self.num_cpu_blocks, *value_block_shape),
+                size=(self.num_device_blocks[Device.CPU], *value_block_shape),
                 dtype=self.dtype,
                 pin_memory=pin_memory,
             )

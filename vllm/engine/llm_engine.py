@@ -17,7 +17,7 @@ from vllm.sequence import (SamplerOutput, Sequence, SequenceGroup,
                            SequenceOutputs, SequenceStatus)
 from vllm.transformers_utils.tokenizer import (detokenize_incrementally,
                                                get_tokenizer)
-from vllm.utils import Counter
+from vllm.utils import Counter, Device
 
 if ray:
     from ray.air.util.torch_dist import init_torch_dist_process_group
@@ -204,17 +204,23 @@ class LLMEngine:
         # operators can be applied to all workers.
         num_gpu_blocks = min(b[0] for b in num_blocks)
         num_cpu_blocks = min(b[1] for b in num_blocks)
+        # TODO(njha): Profile the number of blocks on disk, or default to zero and have a config argument for it.
+        num_disk_blocks = num_cpu_blocks
         # FIXME(woosuk): Change to debug log.
         logger.info(f"# GPU blocks: {num_gpu_blocks}, "
-                    f"# CPU blocks: {num_cpu_blocks}")
+                    f"# CPU blocks: {num_cpu_blocks}, "
+                    f"# DSK blocks: {num_disk_blocks}")
 
         if num_gpu_blocks <= 0:
             raise ValueError("No available memory for the cache blocks. "
                              "Try increasing `gpu_memory_utilization` when "
                              "initializing the engine.")
 
-        self.cache_config.num_gpu_blocks = num_gpu_blocks
-        self.cache_config.num_cpu_blocks = num_cpu_blocks
+        self.cache_config.num_device_blocks = {
+            Device.GPU: num_gpu_blocks,
+            Device.CPU: num_cpu_blocks,
+            Device.DISK: num_disk_blocks,
+        }
 
         # Initialize the cache.
         self._run_workers("init_cache_engine", cache_config=self.cache_config)
@@ -624,13 +630,13 @@ class LLMEngine:
         else:
             avg_generation_throughput = 0.0
 
-        total_num_gpu_blocks = self.cache_config.num_gpu_blocks
+        total_num_gpu_blocks = self.cache_config.num_device_blocks[Device.GPU]
         num_free_gpu_blocks = (
             self.scheduler.block_manager.get_num_free_gpu_blocks())
         num_used_gpu_blocks = total_num_gpu_blocks - num_free_gpu_blocks
         gpu_cache_usage = num_used_gpu_blocks / total_num_gpu_blocks
 
-        total_num_cpu_blocks = self.cache_config.num_cpu_blocks
+        total_num_cpu_blocks = self.cache_config.num_device_blocks[Device.CPU]
         if total_num_cpu_blocks > 0:
             num_free_cpu_blocks = (
                 self.scheduler.block_manager.get_num_free_cpu_blocks())
