@@ -20,7 +20,7 @@ import asyncio
 import json
 import random
 import time
-from typing import AsyncGenerator, List, Tuple
+from typing import AsyncGenerator, List, Tuple, Optional
 
 import aiohttp
 import numpy as np
@@ -33,9 +33,24 @@ REQUEST_LATENCY: List[Tuple[int, int, float]] = []
 
 def sample_requests(
     dataset_path: str,
+    system_prompt_path: Optional[str],
+    block_size: int,
+    use_prefix: bool,
     num_requests: int,
     tokenizer: PreTrainedTokenizerBase,
 ) -> List[Tuple[str, int, int]]:
+    system_prompt = ""
+    prefix_pos = 0
+    if system_prompt_path is not None:
+        with open(system_prompt_path) as f:
+            system_prompt = f.read()
+            
+        if use_prefix:
+            system_prompt_token_id = tokenizer([system_prompt]).input_ids[0]
+            prefix_pos = (len(system_prompt_token_id) // block_size) * block_size
+            
+            print(f"prefix_pos: {prefix_pos}")
+    
     # Load the dataset.
     with open(dataset_path) as f:
         dataset = json.load(f)
@@ -46,7 +61,7 @@ def sample_requests(
     ]
     # Only keep the first two turns of each conversation.
     dataset = [
-        (data["conversations"][0]["value"], data["conversations"][1]["value"])
+        (system_prompt + data["conversations"][0]["value"], data["conversations"][1]["value"])
         for data in dataset
     ]
 
@@ -76,7 +91,7 @@ def sample_requests(
 
     # Sample the requests.
     sampled_requests = random.sample(filtered_dataset, num_requests)
-    return sampled_requests
+    return sampled_requests, prefix_pos
 
 
 async def get_request(
@@ -101,6 +116,7 @@ async def send_request(
     api_url: str,
     prompt: str,
     prompt_len: int,
+    prefix_pos: int,
     output_len: int,
     best_of: int,
     use_beam_search: bool,
@@ -111,6 +127,7 @@ async def send_request(
     if backend == "vllm":
         pload = {
             "prompt": prompt,
+            "prefix_pos": prefix_pos,
             "n": 1,
             "best_of": best_of,
             "use_beam_search": use_beam_search,
@@ -157,6 +174,7 @@ async def benchmark(
     backend: str,
     api_url: str,
     input_requests: List[Tuple[str, int, int]],
+    prefix_pos: int,
     best_of: int,
     use_beam_search: bool,
     request_rate: float,
@@ -165,7 +183,7 @@ async def benchmark(
     async for request in get_request(input_requests, request_rate):
         prompt, prompt_len, output_len = request
         task = asyncio.create_task(send_request(backend, api_url, prompt,
-                                                prompt_len, output_len,
+                                                prompt_len, prefix_pos, output_len,
                                                 best_of, use_beam_search))
         tasks.append(task)
     await asyncio.gather(*tasks)
@@ -178,10 +196,10 @@ def main(args: argparse.Namespace):
 
     api_url = f"http://{args.host}:{args.port}/generate"
     tokenizer = get_tokenizer(args.tokenizer, trust_remote_code=args.trust_remote_code)
-    input_requests = sample_requests(args.dataset, args.num_prompts, tokenizer)
+    input_requests, prefix_pos = sample_requests(args.dataset, args.system_prompt, args.block_size, args.use_prefix, args.num_prompts, tokenizer)
 
     benchmark_start_time = time.perf_counter()
-    asyncio.run(benchmark(args.backend, api_url, input_requests, args.best_of,
+    asyncio.run(benchmark(args.backend, api_url, input_requests, prefix_pos, args.best_of,
                           args.use_beam_search, args.request_rate))
     benchmark_end_time = time.perf_counter()
     benchmark_time = benchmark_end_time - benchmark_start_time
@@ -229,5 +247,9 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument('--trust-remote-code', action='store_true',
                         help='trust remote code from huggingface')
+    parser.add_argument("--system-prompt", type=str, default=None,
+                        help="File path to the system prompt to use as prefix.")
+    parser.add_argument("--block-size", type=int, default=32)
+    parser.add_argument("--use-prefix", type=bool, default=False)
     args = parser.parse_args()
     main(args)
