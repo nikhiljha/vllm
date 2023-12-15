@@ -1,6 +1,7 @@
 """Benchmark the latency of processing a single batch of requests."""
 import argparse
 import time
+import random
 
 import numpy as np
 import torch
@@ -35,7 +36,7 @@ def main(args: argparse.Namespace):
         max_tokens=args.output_len,
     )
     print(sampling_params)
-    dummy_prompt_token_ids = [[0] * args.input_len] * args.batch_size
+    dummy_prompt_token_ids = [[random.randint(0, args.num_prefixes)] * args.input_len for _ in range(args.batch_size)]
 
     def run_to_completion(profile: bool = False):
         if profile:
@@ -44,6 +45,7 @@ def main(args: argparse.Namespace):
 
         llm.generate(prompt_token_ids=dummy_prompt_token_ids,
                      sampling_params=sampling_params,
+                     prefix_pos=[args.prefix_len] * args.batch_size,
                      use_tqdm=False)
 
         end_time = time.perf_counter()
@@ -88,6 +90,14 @@ if __name__ == '__main__':
     parser.add_argument('--trust-remote-code',
                         action='store_true',
                         help='trust remote code from huggingface')
+    parser.add_argument('--num-prefixes',
+                        type=int,
+                        default=0,
+                        help='Number of unique prefixes.')
+    parser.add_argument('--prefix-len',
+                        type=int,
+                        default=0,
+                        help='Length of prefix for each input. Input length includes prefix.')
     parser.add_argument(
         '--dtype',
         type=str,
