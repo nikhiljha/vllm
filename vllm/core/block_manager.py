@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from vllm.block import PhysicalTokenBlock
 from vllm.sequence import Sequence, SequenceGroup, SequenceStatus
 from vllm.utils import Device
-from vllm.prefix import Prefix
+from vllm.prefix import Prefix, PrefixLocation
 
 
 class BlockAllocator:
@@ -259,34 +259,47 @@ class BlockSpaceManager:
         }
         return block_number_mapping
 
-    def swap_in_prefix(self, prefix: Prefix) -> Dict[int, int]:
-        # CPU block -> GPU block.
-        mapping: Dict[PhysicalTokenBlock, PhysicalTokenBlock] = {}
-        new_block_table = []
-        block_table = prefix.block_table
-
-        for i, cpu_block in enumerate(block_table):
-            # ref_count = 1
-            gpu_block = self.allocators[Device.GPU].allocate()
-            mapping[cpu_block] = gpu_block
-            new_block_table.append(gpu_block)
-            # Free the CPU block swapped in to GPU.
-            self.allocators[Device.CPU].free(cpu_block)
-        prefix.block_table = new_block_table
-
-        block_number_mapping = {
-            cpu_block.block_number: gpu_block.block_number
-            for cpu_block, gpu_block in mapping.items()
-        }
-        return block_number_mapping
-
     def can_swap_out(self, seq_group: SequenceGroup) -> bool:
         blocks = self._get_physical_blocks(seq_group)
         return len(blocks) <= self.allocators[Device.CPU].get_num_free_blocks()
 
-    def can_swap_out_prefix(self, prefix: Prefix) -> bool:
+    PREFIX_LOCATION_TO_DEVICE = {
+        PrefixLocation.GPU: Device.GPU,
+        PrefixLocation.CPU: Device.CPU,
+        PrefixLocation.DISK: Device.DISK
+    }
+    
+    def swap_prefix(self, prefix: Prefix, target: PrefixLocation, blocks_to_swap: Dict[int, int]):
+        # Move the prefix to the target location
+        if prefix.get_location() == target:
+            raise ValueError(f"Prefix {prefix.prefix_id} is already on {target}")
+
+        if target == PrefixLocation.NONE:
+            self.evict_prefix(prefix)
+            prefix.set_location(target)
+            return
+
+        target_device = self.PREFIX_LOCATION_TO_DEVICE[target]
+        mapping: Dict[PhysicalTokenBlock, PhysicalTokenBlock] = {}
+        new_block_table = []
+        block_table = prefix.block_table
+        for i, block in enumerate(block_table):
+            new_block = self.allocators[target_device].allocate()
+            mapping[block] = new_block
+            new_block_table.append(new_block)
+            # Free the old block
+            assert block.ref_count == 1
+            self.allocators[block.device].free(block)
+        prefix.block_table = new_block_table
+        return {
+            block.block_number: new_block.block_number
+            for block, new_block in mapping.items()
+        }
+    
+    def can_swap_prefix_to(self, prefix: Prefix, target: PrefixLocation) -> bool:
         blocks = prefix.block_table
-        return len(blocks) <= self.allocators[Device.CPU].get_num_free_blocks()
+        target_device = self.PREFIX_LOCATION_TO_DEVICE[target]
+        return len(blocks) <= self.allocators[target_device].get_num_free_blocks()
 
     def swap_out(self, seq_group: SequenceGroup) -> Dict[int, int]:
         # GPU block -> CPU block.
@@ -318,36 +331,13 @@ class BlockSpaceManager:
         }
         return block_number_mapping
     
-    def swap_out_prefix(self, prefix: Prefix) -> Dict[int, int]:
-        # GPU block -> CPU block.
-        # make sure all the reference seq are finished or swapped out before swapping out the prefix
-        mapping: Dict[PhysicalTokenBlock, PhysicalTokenBlock] = {}
-        new_block_table = []
-        block_table = prefix.block_table
-
-        for gpu_block in block_table:
-            cpu_block = self.allocators[Device.CPU].allocate()
-            mapping[gpu_block] = cpu_block
-            new_block_table.append(cpu_block)
-            # Free the GPU block swapped out to CPU.
-            assert gpu_block.ref_count == 1
-            self.allocators[Device.GPU].free(gpu_block)
-        prefix.block_table = new_block_table
-
-        block_number_mapping = {
-            gpu_block.block_number: cpu_block.block_number
-            for gpu_block, cpu_block in mapping.items()
-        }
-        return block_number_mapping
-    
     def evict_prefix(self, prefix: Prefix) -> None:
         # CPU block -> Gone
         block_table = prefix.block_table
-        for cpu_block in block_table:
-            # TODO(njha): Swap to disk!
+        for block in block_table:
             # Free the GPU block swapped out to CPU.
-            assert cpu_block.ref_count == 1
-            self.allocators[Device.CPU].free(cpu_block)
+            assert block.ref_count == 1
+            self.allocators[block.device].free(block)
 
     def _free_block_table(self, block_table: BlockTable) -> None:
         for block in set(block_table):

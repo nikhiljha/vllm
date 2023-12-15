@@ -180,7 +180,7 @@ class PrefixPool:
         self.max_prefixes: dict[PrefixLocation, int] = {
             PrefixLocation.GPU: 1,
             PrefixLocation.CPU: 1,
-            PrefixLocation.DISK: 0,
+            PrefixLocation.DISK: 1,
         }
 
         # NOTE(njha -> kevwang): You can change the eviction policy here.
@@ -204,6 +204,9 @@ class PrefixPool:
 
     def get_num_on(self, location: PrefixLocation) -> int:
         return len([prefix for prefix in self.prefixes if prefix.location == location])
+
+    def get_on(self, location: PrefixLocation) -> int:
+        return [prefix.prefix_id for prefix in self.prefixes if prefix.location == location]
 
     def set_location(self, prefix: Prefix, new_location: PrefixLocation) -> None:
         if prefix.location != PrefixLocation.NONE:
