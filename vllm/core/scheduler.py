@@ -365,8 +365,13 @@ class Scheduler:
 
         # Try to prefetch some prefixes if possible.
         # First, get a list of prefixes on the GPU that are not about to be used (not running or waiting)
-        dead_prefixes = set([
+        dead_gpu_prefixes = set([
             prefix for prefix in self.prefix_pool.get_on(PrefixLocation.GPU) 
+            if prefix not in set([group.prefix for group in self.running] + [group.prefix for group in self.waiting])
+        ])
+
+        dead_cpu_prefixes = set([
+            prefix for prefix in self.prefix_pool.get_on(PrefixLocation.CPU) 
             if prefix not in set([group.prefix for group in self.running] + [group.prefix for group in self.waiting])
         ])
 
@@ -376,13 +381,23 @@ class Scheduler:
             if group.prefix is not None and group.prefix.location != PrefixLocation.GPU and group.prefix.location != PrefixLocation.NONE
         ])
 
+        upcoming_prefixes_for_cpu = set(prefix for prefix in upcoming_prefixes if prefix.location == PrefixLocation.DISK)
+
         # If the GPU isn't full of prefixes, or if there are dead prefixes available, swap them out and swap in an upcoming prefix
-        while (self.prefix_pool.get_num_on(PrefixLocation.GPU) < self.prefix_pool.max_prefixes[PrefixLocation.GPU] or dead_prefixes) and upcoming_prefixes:
-            if len(dead_prefixes) != 0:
-                dead_prefix = dead_prefixes.pop()
+        while (self.prefix_pool.get_num_on(PrefixLocation.GPU) < self.prefix_pool.max_prefixes[PrefixLocation.GPU] or dead_gpu_prefixes) and upcoming_prefixes:
+            if len(dead_gpu_prefixes) != 0:
+                dead_prefix = dead_gpu_prefixes.pop()
                 self._swap_prefix(dead_prefix, PrefixLocation.CPU, blocks_to_swap[Device.GPU][Device.CPU])
             upcoming_prefix = upcoming_prefixes.pop()
             self._swap_prefix(upcoming_prefix, PrefixLocation.GPU, blocks_to_swap[PREFIX_LOCATION_TO_DEVICE[upcoming_prefix.location]][Device.GPU])
+
+        # If the CPU isn't full of prefixes, or if there are dead prefixes available, swap them out and swap in an upcoming prefix
+        while (self.prefix_pool.get_num_on(PrefixLocation.CPU) < self.prefix_pool.max_prefixes[PrefixLocation.CPU] or dead_cpu_prefixes) and upcoming_prefixes:
+            if len(dead_cpu_prefixes) != 0:
+                dead_prefix = dead_cpu_prefixes.pop()
+                self._swap_prefix(dead_prefix, PrefixLocation.DISK, blocks_to_swap[Device.CPU][Device.DISK])
+            upcoming_prefix = upcoming_prefixes_for_cpu.pop()
+            self._swap_prefix(upcoming_prefix, PrefixLocation.CPU, blocks_to_swap[PREFIX_LOCATION_TO_DEVICE[upcoming_prefix.location]][Device.CPU])
 
         scheduler_outputs = SchedulerOutputs(
             scheduled_seq_groups=self.running,
