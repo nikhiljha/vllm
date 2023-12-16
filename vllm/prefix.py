@@ -29,8 +29,8 @@ class Prefix:
         self.prefix_id = prefix_id
         self.token_ids = token_ids
         self.length = len(token_ids)
-        print("prefix length: ", self.length)
-        print("block size: ", block_size)
+        # print("prefix length: ", self.length)
+        # print("block size: ", block_size)
         assert self.length % block_size == 0
         self.location = PrefixLocation.NONE
         self.block_table = None

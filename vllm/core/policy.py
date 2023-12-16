@@ -43,7 +43,7 @@ class PREFIX_PRIORITY(Policy):
             if seq_group.prefix is None:
                 return 1
 
-            if not seq_group.prefix.is_on_gpu():
+            if seq_group.prefix.is_on_gpu():
                 return 2
             else:
                 # We have the prefix but it's elsewhere, so we want as much time
@@ -60,7 +60,7 @@ class PREFIX_PRIORITY_EQ(Policy):
             if seq_group.prefix is None:
                 return 0
 
-            if not seq_group.prefix.is_on_gpu():
+            if seq_group.prefix.is_on_gpu():
                 return 2
             else:
                 # We have the prefix but it's elsewhere, so we want as much time
