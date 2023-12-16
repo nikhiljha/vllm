@@ -758,7 +758,7 @@ class LLMEngine:
             'swaps_cpu_disk': div(swaps[(PrefixLocation.CPU, PrefixLocation.DISK)], total_swaps),
             'swaps_disk_gpu': div(swaps[(PrefixLocation.DISK, PrefixLocation.GPU)], total_swaps),
             'swaps_disk_cpu': div(swaps[(PrefixLocation.DISK, PrefixLocation.CPU)], total_swaps),
-            'util_gpu': div((util[PrefixLocation.GPU] + evictions[PrefixLocation.GPU]), evictions[PrefixLocation.GPU]),
-            'util_cpu': div((util[PrefixLocation.CPU] + evictions[PrefixLocation.CPU]), evictions[PrefixLocation.CPU]),
-            'util_disk': div((util[PrefixLocation.DISK] + evictions[PrefixLocation.DISK]), evictions[PrefixLocation.DISK]),
+            'util_gpu': div(evictions[PrefixLocation.GPU], (util[PrefixLocation.GPU] + evictions[PrefixLocation.GPU])),
+            'util_cpu': div(evictions[PrefixLocation.CPU], (util[PrefixLocation.CPU] + evictions[PrefixLocation.CPU])),
+            'util_disk': div(evictions[PrefixLocation.DISK], (util[PrefixLocation.DISK] + evictions[PrefixLocation.DISK])),
         }
