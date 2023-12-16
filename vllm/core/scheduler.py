@@ -83,7 +83,10 @@ class Scheduler:
             num_device_blocks=self.cache_config.num_device_blocks,
             sliding_window=self.cache_config.sliding_window)
         
-        self.prefix_pool = PrefixPool(self.cache_config.block_size)
+        self.prefix_pool = PrefixPool(self.cache_config.block_size, 
+                                      self.cache_config.max_gpu_prefixes, 
+                                      self.cache_config.max_cpu_prefixes, 
+                                      self.cache_config.max_disk_prefixes)
 
         # TODO(zhuohan): Use deque instead of list for better performance.
         # Sequence groups in the WAITING state.

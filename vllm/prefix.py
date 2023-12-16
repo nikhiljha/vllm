@@ -179,7 +179,7 @@ class EvictViaFIFO(PrefixEvictionPolicy):
 
 
 class PrefixPool:
-    def __init__(self, block_size: int):
+    def __init__(self, block_size: int, max_gpu_prefixes: int, max_cpu_prefixes: int, max_disk_prefixes: int):
         self.prefixes: list[Prefix] = []
         self.prefixes_hash: dict[int, Prefix] = {}
         self.block_size = block_size
@@ -187,10 +187,12 @@ class PrefixPool:
         # Cache Parameters
         # NOTE(njha -> kevwang): Configure parameters for benchmarking here.
         self.max_prefixes: dict[PrefixLocation, int] = {
-            PrefixLocation.GPU: 16,
-            PrefixLocation.CPU: 32,
-            PrefixLocation.DISK: 64,
+            PrefixLocation.GPU: max_gpu_prefixes,
+            PrefixLocation.CPU: max_cpu_prefixes,
+            PrefixLocation.DISK: max_disk_prefixes,
         }
+        
+        print(f"max_prefixes: {self.max_prefixes}")
 
         # NOTE(njha -> kevwang): You can change the eviction policy here.
         self.eviction_policies: dict[PrefixLocation, PrefixEvictionPolicy] = {

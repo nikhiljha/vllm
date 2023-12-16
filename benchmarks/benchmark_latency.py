@@ -25,6 +25,9 @@ def main(args: argparse.Namespace):
         max_num_batched_tokens=args.batch_size * args.input_len,
         trust_remote_code=args.trust_remote_code,
         dtype=args.dtype,
+        max_gpu_prefixes=args.max_gpu_prefixes,
+        max_cpu_prefixes=args.max_cpu_prefixes,
+        max_disk_prefixes=args.max_disk_prefixes,
     )
 
     sampling_params = SamplingParams(
@@ -111,6 +114,15 @@ if __name__ == '__main__':
                         type=int,
                         default=0,
                         help='Length of prefix for each input. Input length includes prefix.')
+    parser.add_argument('--max-gpu-prefixes',
+                        type=int,
+                        default=16)
+    parser.add_argument('--max-cpu-prefixes',
+                        type=int,
+                        default=32)
+    parser.add_argument('--max-disk-prefixes',
+                        type=int,
+                        default=64)
     parser.add_argument("--output-csv", type=str, default=None)
     parser.add_argument("--benchmark-name", type=str, default="latency")
     parser.add_argument(

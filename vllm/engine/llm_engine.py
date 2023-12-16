@@ -85,7 +85,10 @@ class LLMEngine:
             f"load_format={model_config.load_format}, "
             f"tensor_parallel_size={parallel_config.tensor_parallel_size}, "
             f"quantization={model_config.quantization}, "
-            f"seed={model_config.seed})")
+            f"seed={model_config.seed}, "
+            f"max_gpu_prefixes={cache_config.max_gpu_prefixes}, "
+            f"max_cpu_prefixes={cache_config.max_cpu_prefixes}, "
+            f"max_disk_prefixes={cache_config.max_disk_prefixes})")
         # TODO(woosuk): Print more configs in debug mode.
 
         self.model_config = model_config

@@ -70,6 +70,9 @@ def run_vllm(
     use_beam_search: bool,
     trust_remote_code: bool,
     prefix_len: int,
+    max_gpu_prefixes: int,
+    max_cpu_prefixes: int,
+    max_disk_prefixes: int,
     output_csv: Optional[str],
     benchmark_name: str,
     dtype: str,
@@ -83,6 +86,9 @@ def run_vllm(
         seed=seed,
         trust_remote_code=trust_remote_code,
         dtype=dtype,
+        max_gpu_prefixes=max_gpu_prefixes,
+        max_cpu_prefixes=max_cpu_prefixes,
+        max_disk_prefixes=max_disk_prefixes,
     )
 
     # Add the requests to the engine.
@@ -221,6 +227,7 @@ def main(args: argparse.Namespace):
                                 args.quantization, args.tensor_parallel_size,
                                 args.seed, args.n, args.use_beam_search,
                                 args.trust_remote_code, args.prefix_len, 
+                                args.max_gpu_prefixes, args.max_cpu_prefixes, args.max_disk_prefixes,
                                 args.output_csv, args.benchmark_name, args.dtype)
     elif args.backend == "hf":
         assert args.tensor_parallel_size == 1
@@ -289,6 +296,15 @@ if __name__ == "__main__":
                         type=int,
                         default=0,
                         help='Length of prefix for each input in tokens.')
+    parser.add_argument('--max-gpu-prefixes',
+                        type=int,
+                        default=16)
+    parser.add_argument('--max-cpu-prefixes',
+                        type=int,
+                        default=32)
+    parser.add_argument('--max-disk-prefixes',
+                        type=int,
+                        default=64)
     parser.add_argument("--output-csv", type=str, default=None)
     parser.add_argument("--benchmark-name", type=str, default="throughput")
     parser.add_argument(

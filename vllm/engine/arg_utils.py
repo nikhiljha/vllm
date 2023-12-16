@@ -32,6 +32,9 @@ class EngineArgs:
     revision: Optional[str] = None
     tokenizer_revision: Optional[str] = None
     quantization: Optional[str] = None
+    max_gpu_prefixes: int = 16
+    max_cpu_prefixes: int = 32
+    max_disk_prefixes: int = 64
 
     def __post_init__(self):
         if self.tokenizer is None:
@@ -171,6 +174,15 @@ class EngineArgs:
                             choices=['awq', 'squeezellm', None],
                             default=None,
                             help='Method used to quantize the weights')
+        parser.add_argument('--max-gpu-prefixes',
+                        type=int,
+                        default=16)
+        parser.add_argument('--max-cpu-prefixes',
+                            type=int,
+                            default=32)
+        parser.add_argument('--max-disk-prefixes',
+                            type=int,
+                            default=64)
         return parser
 
     @classmethod
@@ -192,7 +204,8 @@ class EngineArgs:
                                    self.quantization)
         cache_config = CacheConfig(
             self.block_size, self.gpu_memory_utilization, self.swap_space,
-            getattr(model_config.hf_config, 'sliding_window', None))
+            getattr(model_config.hf_config, 'sliding_window', None),
+            self.max_gpu_prefixes, self.max_cpu_prefixes, self.max_disk_prefixes)
         parallel_config = ParallelConfig(self.pipeline_parallel_size,
                                          self.tensor_parallel_size,
                                          self.worker_use_ray)

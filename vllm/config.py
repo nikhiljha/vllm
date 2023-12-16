@@ -194,11 +194,17 @@ class CacheConfig:
         gpu_memory_utilization: float,
         swap_space: int,
         sliding_window: Optional[int] = None,
+        max_gpu_prefixes: int = 16,
+        max_cpu_prefixes: int = 32,
+        max_disk_prefixes: int = 64,
     ) -> None:
         self.block_size = block_size
         self.gpu_memory_utilization = gpu_memory_utilization
         self.swap_space_bytes = swap_space * _GB
         self.sliding_window = sliding_window
+        self.max_gpu_prefixes = max_gpu_prefixes
+        self.max_cpu_prefixes = max_cpu_prefixes
+        self.max_disk_prefixes = max_disk_prefixes
         self._verify_args()
 
         # Will be set after profiling, but we set some default values here.
