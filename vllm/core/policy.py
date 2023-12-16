@@ -33,11 +33,46 @@ class FCFS(Policy):
     ) -> float:
         return now - seq_group.arrival_time
 
+class PREFIX_PRIORITY(Policy):
+    
+        def get_priority(
+            self,
+            now: float,
+            seq_group: SequenceGroup,
+        ) -> float:
+            if seq_group.prefix is None:
+                return 1
+
+            if not seq_group.prefix.is_on_gpu():
+                return 2
+            else:
+                # We have the prefix but it's elsewhere, so we want as much time
+                # as possible to swap it in.
+                return 0
+
+class PREFIX_PRIORITY_EQ(Policy):
+    
+        def get_priority(
+            self,
+            now: float,
+            seq_group: SequenceGroup,
+        ) -> float:
+            if seq_group.prefix is None:
+                return 0
+
+            if not seq_group.prefix.is_on_gpu():
+                return 2
+            else:
+                # We have the prefix but it's elsewhere, so we want as much time
+                # as possible to swap it in.
+                return 0
 
 class PolicyFactory:
 
     _POLICY_REGISTRY = {
         'fcfs': FCFS,
+        'prefix_priority': PREFIX_PRIORITY,
+        'prefix_priority_eq': PREFIX_PRIORITY_EQ,
     }
 
     @classmethod
