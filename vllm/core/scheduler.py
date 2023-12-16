@@ -259,9 +259,16 @@ class Scheduler:
                         else:
                             break
                 
-                evict_older_prefixes(PrefixLocation.GPU, lambda prefix: self._swap_prefix(prefix, PrefixLocation.CPU, blocks_to_swap[Device.GPU][Device.CPU]))
-                evict_older_prefixes(PrefixLocation.CPU, lambda prefix: self._swap_prefix(prefix, PrefixLocation.DISK, blocks_to_swap[Device.CPU][Device.DISK]))
-                evict_older_prefixes(PrefixLocation.DISK, lambda prefix: self._evict_prefix(prefix))
+                # This is kind of ugly but we're running low on time and I'm not going to think about it.
+                if self.prefix_pool.max_prefixes[PrefixLocation.CPU] > 0:
+                    evict_older_prefixes(PrefixLocation.GPU, lambda prefix: self._swap_prefix(prefix, PrefixLocation.CPU, blocks_to_swap[Device.GPU][Device.CPU]))
+                    if self.prefix_pool.max_prefixes[PrefixLocation.DISK] > 0:
+                        evict_older_prefixes(PrefixLocation.CPU, lambda prefix: self._swap_prefix(prefix, PrefixLocation.DISK, blocks_to_swap[Device.CPU][Device.DISK]))
+                        evict_older_prefixes(PrefixLocation.DISK, lambda prefix: self._evict_prefix(prefix))
+                    else:
+                        evict_older_prefixes(PrefixLocation.CPU, lambda prefix: self._evict_prefix(prefix))
+                else:
+                    evict_older_prefixes(PrefixLocation.GPU, lambda prefix: self._evict_prefix(prefix))
                 # print("GPU Items: ", self.prefix_pool.get_on(PrefixLocation.GPU))
                 # print("CPU Items: ", self.prefix_pool.get_on(PrefixLocation.CPU))
                 # print("DISK Items: ", self.prefix_pool.get_on(PrefixLocation.DISK))
