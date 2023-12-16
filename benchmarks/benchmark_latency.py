@@ -36,7 +36,7 @@ def main(args: argparse.Namespace):
         max_tokens=args.output_len,
     )
     print(sampling_params)
-    dummy_prompt_token_ids = [[random.randrange(args.num_prefixes)] * args.input_len for _ in range(args.batch_size)]
+    dummy_prompt_token_ids = [[random.randrange(args.num_prefixes)] + [0] * (args.input_len - 1) for _ in range(args.batch_size)]
 
     def run_to_completion(profile: bool = False):
         if profile:
