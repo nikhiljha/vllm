@@ -214,8 +214,8 @@ class PrefixPool:
     def get_num_on(self, location: PrefixLocation) -> int:
         return len([prefix for prefix in self.prefixes if prefix.location == location])
 
-    def get_on(self, location: PrefixLocation) -> int:
-        return [prefix.prefix_id for prefix in self.prefixes if prefix.location == location]
+    def get_on(self, location: PrefixLocation) -> list[Prefix]:
+        return [prefix for prefix in self.prefixes if prefix.location == location]
 
     def set_location(self, prefix: Prefix, new_location: PrefixLocation) -> None:
         if prefix.location != PrefixLocation.NONE:
