@@ -159,6 +159,33 @@ class Scheduler:
         # Fix the current time.
         now = time.monotonic()
 
+        # TODO(njha): Either fix this so PrefixLocation is a device or make it easier to convert.
+        PREFIX_LOCATION_TO_DEVICE = {
+            PrefixLocation.GPU: Device.GPU,
+            PrefixLocation.CPU: Device.CPU,
+            PrefixLocation.DISK: Device.DISK,
+        }
+
+        # Swap in prefixes that are about to be used, evicting prefixes that are not
+        # First, get a list of prefixes on the GPU that are not about to be used (not running or waiting)
+        dead_prefixes = set([
+            prefix for prefix in self.prefix_pool.get_on(PrefixLocation.GPU) 
+            if prefix not in set([group.prefix for group in self.running] + [group.prefix for group in self.waiting])
+        ])
+        # print("dead prefixes: ", [prefix.token_ids[0] for prefix in dead_prefixes])
+        # Then, get a list of prefixes not on the GPU that are about to be used (running or waiting)
+        upcoming_prefixes = set([
+            group.prefix for group in self.running + self.waiting
+            if group.prefix is not None and group.prefix.location != PrefixLocation.GPU and group.prefix.location != PrefixLocation.NONE
+        ])
+        # If the GPU isn't full of prefixes, or if there are dead prefixes available, swap them out and swap in an upcoming prefix
+        while (self.prefix_pool.get_num_on(PrefixLocation.GPU) < self.prefix_pool.max_prefixes[PrefixLocation.GPU] or dead_prefixes) and upcoming_prefixes:
+            if len(dead_prefixes) != 0:
+                dead_prefix = dead_prefixes.pop()
+                self._swap_prefix(dead_prefix, PrefixLocation.CPU, blocks_to_swap[Device.GPU][Device.CPU])
+            upcoming_prefix = upcoming_prefixes.pop()
+            self._swap_prefix(upcoming_prefix, PrefixLocation.GPU, blocks_to_swap[PREFIX_LOCATION_TO_DEVICE[upcoming_prefix.location]][Device.GPU])
+
         # Join waiting sequences if possible.
         if not self.swapped:
             ignored_seq_groups: List[SequenceGroup] = []
@@ -218,6 +245,7 @@ class Scheduler:
 
                 seq_group = self.waiting.pop(0)
 
+
                 # Evict the oldest prefixes if necessary.
                 def evict_older_prefixes(location: PrefixLocation, eviction_function: Callable[[Prefix], None]):
                     while self.prefix_pool.get_num_on(location) > self.prefix_pool.max_prefixes[location]:
@@ -226,7 +254,7 @@ class Scheduler:
                             lambda prefix_id: prefix_id not in [group.prefix.prefix_id for group in self.running] + ([seq_group.prefix.prefix_id] if seq_group.prefix is not None else [])
                         )
                         if prefix_to_swap_out is not None:
-                            print("swapping prefix: ", location, prefix_to_swap_out.token_ids[0])
+                            # print("swapping prefix: ", location, prefix_to_swap_out.token_ids[0])
                             eviction_function(prefix_to_swap_out)
                         else:
                             break
@@ -253,12 +281,7 @@ class Scheduler:
                     if not already_utilized and seq_group.prefix.location != PrefixLocation.NONE:
                         self.logs['util'][seq_group.prefix.location] += 1
 
-                    # TODO(njha): Either fix this so PrefixLocation is a device or make it easier to convert.
-                    PREFIX_LOCATION_TO_DEVICE = {
-                        PrefixLocation.GPU: Device.GPU,
-                        PrefixLocation.CPU: Device.CPU,
-                        PrefixLocation.DISK: Device.DISK,
-                    }
+
 
                     # TODO(njha): This is swapping too late, we should swap in ahead of time if we can.
                     # swap in the prefix if it is not on the GPU
@@ -490,6 +513,7 @@ class Scheduler:
             seq.status = SequenceStatus.SWAPPED
     
     def _swap_prefix(self, prefix: Prefix, target: PrefixLocation, blocks_to_swap: Dict[int, int]) -> None:
+        assert prefix.location != target
         if prefix.location == target:
             return
         if not self.block_manager.can_swap_prefix_to(prefix, target):
