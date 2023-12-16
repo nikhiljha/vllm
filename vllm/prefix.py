@@ -37,6 +37,8 @@ class Prefix:
         # a lock to prevent multiple sequence from calculating the same prefix
         # gets set when the prefix hasn't been calculated yet, or is being swapped in
         self.load_in_progress = False
+        # whether or not this prefix has been used before swap or eviction
+        self.utilized = False
 
     def get_block_table_num(self) -> List[int]:
         return [block.block_number for block in self.block_table]
@@ -55,6 +57,8 @@ class Prefix:
         self.load_in_progress = load_in_progress
 
     def set_location(self, location: PrefixLocation) -> None:
+        if self.location != location:
+            self.utilized = False
         self.location = location
 
     def get_location(self) -> PrefixLocation:
@@ -62,6 +66,11 @@ class Prefix:
 
     def get_length(self):
         return self.length
+    
+    def utilize(self) -> bool:
+        already_utilized = self.utilized
+        self.utilized = True
+        return already_utilized
 
 
 # Define the prefix pool class, which is a collection of prefixes.
@@ -178,9 +187,9 @@ class PrefixPool:
         # Cache Parameters
         # NOTE(njha -> kevwang): Configure parameters for benchmarking here.
         self.max_prefixes: dict[PrefixLocation, int] = {
-            PrefixLocation.GPU: 1,
-            PrefixLocation.CPU: 1,
-            PrefixLocation.DISK: 1,
+            PrefixLocation.GPU: 16,
+            PrefixLocation.CPU: 32,
+            PrefixLocation.DISK: 64,
         }
 
         # NOTE(njha -> kevwang): You can change the eviction policy here.

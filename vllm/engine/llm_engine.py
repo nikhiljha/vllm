@@ -18,6 +18,7 @@ from vllm.sequence import (SamplerOutput, Sequence, SequenceGroup,
 from vllm.transformers_utils.tokenizer import (detokenize_incrementally,
                                                get_tokenizer)
 from vllm.utils import Counter, Device
+from vllm.prefix import PrefixLocation
 
 if ray:
     from ray.air.util.torch_dist import init_torch_dist_process_group
@@ -734,3 +735,30 @@ class LLMEngine:
         for other_output in all_outputs[1:]:
             assert output == other_output
         return output
+    
+    def get_prefix_logs(self):
+        hits = self.scheduler.logs['hits']
+        swaps = self.scheduler.logs['swaps']
+        util = self.scheduler.logs['util']
+        evictions = self.scheduler.logs['evictions']
+        
+        total_hits = sum(hits.values())
+        total_swaps = sum(swaps.values())
+        
+        div = lambda x, y: x / y if y != 0 else "NaN"
+        
+        return {
+            'hits_gpu': div(hits[PrefixLocation.GPU], total_hits),
+            'hits_cpu': div(hits[PrefixLocation.CPU], total_hits),
+            'hits_disk': div(hits[PrefixLocation.DISK], total_hits),
+            'misses': div(hits[PrefixLocation.NONE], total_hits),
+            'swaps_gpu_cpu': div(swaps[(PrefixLocation.GPU, PrefixLocation.CPU)], total_swaps),
+            'swaps_gpu_disk': div(swaps[(PrefixLocation.GPU, PrefixLocation.DISK)], total_swaps),
+            'swaps_cpu_gpu': div(swaps[(PrefixLocation.CPU, PrefixLocation.GPU)], total_swaps),
+            'swaps_cpu_disk': div(swaps[(PrefixLocation.CPU, PrefixLocation.DISK)], total_swaps),
+            'swaps_disk_gpu': div(swaps[(PrefixLocation.DISK, PrefixLocation.GPU)], total_swaps),
+            'swaps_disk_cpu': div(swaps[(PrefixLocation.DISK, PrefixLocation.CPU)], total_swaps),
+            'util_gpu': div((util[PrefixLocation.GPU] + evictions[PrefixLocation.GPU]), evictions[PrefixLocation.GPU]),
+            'util_cpu': div((util[PrefixLocation.CPU] + evictions[PrefixLocation.CPU]), evictions[PrefixLocation.CPU]),
+            'util_disk': div((util[PrefixLocation.DISK] + evictions[PrefixLocation.DISK]), evictions[PrefixLocation.DISK]),
+        }

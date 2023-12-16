@@ -100,6 +100,12 @@ class Scheduler:
                 (PrefixLocation.DISK, PrefixLocation.GPU): 0,
             },
             'hits': {
+                PrefixLocation.NONE: 0,
+                PrefixLocation.GPU: 0,
+                PrefixLocation.CPU: 0,
+                PrefixLocation.DISK: 0,    
+            },
+            'util': {
                 PrefixLocation.GPU: 0,
                 PrefixLocation.CPU: 0,
                 PrefixLocation.DISK: 0,    
@@ -236,6 +242,9 @@ class Scheduler:
                     self.prefix_pool.hit_prefix(seq_group.prefix)
                     
                     self.logs['hits'][seq_group.prefix.location] += 1
+                    already_utilized = seq_group.prefix.utilize()
+                    if not already_utilized and seq_group.prefix.location != PrefixLocation.NONE:
+                        self.logs['util'][seq_group.prefix.location] += 1
 
                     # TODO(njha): Either fix this so PrefixLocation is a device or make it easier to convert.
                     PREFIX_LOCATION_TO_DEVICE = {

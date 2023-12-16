@@ -189,7 +189,7 @@ async def benchmark(
     await asyncio.gather(*tasks)
 
 
-def main(args: argparse.Namespace):
+async def main(args: argparse.Namespace):
     print(args)
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -199,12 +199,13 @@ def main(args: argparse.Namespace):
     input_requests, prefix_pos = sample_requests(args.dataset, args.system_prompt, args.block_size, args.use_prefix, args.num_prompts, tokenizer)
 
     benchmark_start_time = time.perf_counter()
-    asyncio.run(benchmark(args.backend, api_url, input_requests, prefix_pos, args.best_of,
-                          args.use_beam_search, args.request_rate))
+    await benchmark(args.backend, api_url, input_requests, prefix_pos, args.best_of,
+                          args.use_beam_search, args.request_rate)
     benchmark_end_time = time.perf_counter()
     benchmark_time = benchmark_end_time - benchmark_start_time
     print(f"Total time: {benchmark_time:.2f} s")
-    print(f"Throughput: {args.num_prompts / benchmark_time:.2f} requests/s")
+    throughput = args.num_prompts / benchmark_time
+    print(f"Throughput: {throughput:.2f} requests/s")
 
     # Compute the latency statistics.
     avg_latency = np.mean([latency for _, _, latency in REQUEST_LATENCY])
@@ -220,6 +221,19 @@ def main(args: argparse.Namespace):
     ])
     print("Average latency per output token: "
           f"{avg_per_output_token_latency:.2f} s")
+    
+    if args.output_csv is not None:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"http://{args.host}:{args.port}/prefix-logs") as response:
+                logs = await response.json()
+        
+        with open(args.output_csv, "a") as f:
+            f.write("{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n".format(
+                args.benchmark_name,
+                avg_latency,
+                throughput,
+                *logs.values()
+            ))
 
 
 if __name__ == "__main__":
@@ -251,5 +265,7 @@ if __name__ == "__main__":
                         help="File path to the system prompt to use as prefix.")
     parser.add_argument("--block-size", type=int, default=32)
     parser.add_argument("--use-prefix", type=bool, default=False)
+    parser.add_argument("--output-csv", type=str, default=None)
+    parser.add_argument("--benchmark-name", type=str, default="serving")
     args = parser.parse_args()
-    main(args)
+    asyncio.run(main(args))

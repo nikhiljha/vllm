@@ -61,7 +61,20 @@ def main(args: argparse.Namespace):
     latencies = []
     for _ in tqdm(range(args.num_iters), desc="Profiling iterations"):
         latencies.append(run_to_completion(profile=False))
-    print(f'Avg latency: {np.mean(latencies)} seconds')
+    
+    avg_latency = np.mean(latencies)
+    print(f'Avg latency: {avg_latency} seconds')
+    
+    if args.output_csv is not None:
+        logs = llm.llm_engine.get_prefix_logs()
+        
+        with open(args.output_csv, "a") as f:
+            f.write("{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n".format(
+                args.benchmark_name,
+                avg_latency,
+                "N/A",
+                *logs.values()
+            ))
 
 
 if __name__ == '__main__':
@@ -98,6 +111,8 @@ if __name__ == '__main__':
                         type=int,
                         default=0,
                         help='Length of prefix for each input. Input length includes prefix.')
+    parser.add_argument("--output-csv", type=str, default=None)
+    parser.add_argument("--benchmark-name", type=str, default="latency")
     parser.add_argument(
         '--dtype',
         type=str,

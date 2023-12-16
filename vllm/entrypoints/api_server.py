@@ -70,6 +70,12 @@ async def generate(request: Request) -> Response:
     return JSONResponse(ret)
 
 
+@app.get("/prefix-logs")
+async def prefix_logs() -> Response:
+    """Get the prefix logs."""
+    return JSONResponse(engine.engine.get_prefix_logs())
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default=None)

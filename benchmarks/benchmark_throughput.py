@@ -70,6 +70,8 @@ def run_vllm(
     use_beam_search: bool,
     trust_remote_code: bool,
     prefix_len: int,
+    output_csv: Optional[str],
+    benchmark_name: str,
     dtype: str,
 ) -> float:
     from vllm import LLM, SamplingParams
@@ -105,7 +107,21 @@ def run_vllm(
     # FIXME(woosuk): Do use internal method.
     llm._run_engine(use_tqdm=True)
     end = time.perf_counter()
-    return end - start
+    
+    elapsed_time = end - start
+    
+    if output_csv is not None:
+        logs = llm.llm_engine.get_prefix_logs()
+        
+        with open(output_csv, "a") as f:
+            f.write("{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n".format(
+                benchmark_name,
+                "N/A",
+                len(requests) / elapsed_time,
+                *logs.values()
+            ))
+    
+    return elapsed_time
 
 
 def run_hf(
@@ -204,7 +220,8 @@ def main(args: argparse.Namespace):
         elapsed_time = run_vllm(requests, args.model, args.tokenizer,
                                 args.quantization, args.tensor_parallel_size,
                                 args.seed, args.n, args.use_beam_search,
-                                args.trust_remote_code, args.prefix_len, args.dtype)
+                                args.trust_remote_code, args.prefix_len, 
+                                args.output_csv, args.benchmark_name, args.dtype)
     elif args.backend == "hf":
         assert args.tensor_parallel_size == 1
         elapsed_time = run_hf(requests, args.model, tokenizer, args.n,
@@ -272,7 +289,8 @@ if __name__ == "__main__":
                         type=int,
                         default=0,
                         help='Length of prefix for each input in tokens.')
-
+    parser.add_argument("--output-csv", type=str, default=None)
+    parser.add_argument("--benchmark-name", type=str, default="throughput")
     parser.add_argument(
         '--dtype',
         type=str,
