@@ -190,8 +190,8 @@ class Scheduler:
             # NOTE(njha): this is the scheduler priority, see other note above
             self.waiting = self.policy.sort_by_priority(now, self.waiting)
             if debug_flag < 3:
-                print([seq_group.prefix.prefix_id for seq_group in self.waiting if seq_group.prefix is not None])
-                print([prefix.prefix_id for prefix in self.prefix_pool.get_on(PrefixLocation.GPU)])
+                # print([seq_group.prefix.prefix_id for seq_group in self.waiting if seq_group.prefix is not None])
+                # print([prefix.prefix_id for prefix in self.prefix_pool.get_on(PrefixLocation.GPU)])
                 debug_flag += 1
 
             while self.waiting:
@@ -280,8 +280,8 @@ class Scheduler:
                         self.logs['util'][seq_group.prefix.location] += 1
 
                     # TODO(njha): This is swapping too late, we should swap in ahead of time if we can.
-                    # swap in the prefix if it is not on the GPU
-                    if not seq_group.prefix.location == PrefixLocation.NONE and not seq_group.prefix.location == PrefixLocation.GPU:
+                    # swap in the prefix if it is on the CPU. if it's on disk and we're ready to run it it's faster to recompute
+                    if seq_group.prefix.location == PrefixLocation.CPU:
                         # prefix.location will be set to GPU this function
                         self._swap_prefix(seq_group.prefix, PrefixLocation.GPU, blocks_to_swap[PREFIX_LOCATION_TO_DEVICE[seq_group.prefix.location]][Device.GPU])
 
@@ -375,11 +375,12 @@ class Scheduler:
             if prefix not in set([group.prefix for group in self.running] + [group.prefix for group in self.waiting])
         ])
 
-        # Then, get a list of prefixes not on the GPU that are about to be used (running or waiting)
+        # Then, get a list of prefixes not on the GPU that are about to be used (waiting)
+        running_prefix_groups = set([group.prefix for group in self.running if group.prefix is not None])
         upcoming_prefixes = set([
-            group.prefix for group in self.running + self.waiting
+            group.prefix for group in self.waiting
             if group.prefix is not None and group.prefix.location != PrefixLocation.GPU and group.prefix.location != PrefixLocation.NONE
-        ])
+        ]) - running_prefix_groups
 
         upcoming_prefixes_for_cpu = set(prefix for prefix in upcoming_prefixes if prefix.location == PrefixLocation.DISK)
 
@@ -392,7 +393,7 @@ class Scheduler:
             self._swap_prefix(upcoming_prefix, PrefixLocation.GPU, blocks_to_swap[PREFIX_LOCATION_TO_DEVICE[upcoming_prefix.location]][Device.GPU])
 
         # If the CPU isn't full of prefixes, or if there are dead prefixes available, swap them out and swap in an upcoming prefix
-        while (self.prefix_pool.get_num_on(PrefixLocation.CPU) < self.prefix_pool.max_prefixes[PrefixLocation.CPU] or dead_cpu_prefixes) and upcoming_prefixes:
+        while (self.prefix_pool.get_num_on(PrefixLocation.CPU) < self.prefix_pool.max_prefixes[PrefixLocation.CPU] or dead_cpu_prefixes) and upcoming_prefixes_for_cpu:
             if len(dead_cpu_prefixes) != 0:
                 dead_prefix = dead_cpu_prefixes.pop()
                 self._swap_prefix(dead_prefix, PrefixLocation.DISK, blocks_to_swap[Device.CPU][Device.DISK])

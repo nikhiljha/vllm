@@ -1,4 +1,5 @@
 from typing import List
+from vllm.prefix import PrefixLocation
 
 from vllm.sequence import SequenceGroup
 
@@ -41,14 +42,16 @@ class PREFIX_PRIORITY(Policy):
             seq_group: SequenceGroup,
         ) -> float:
             if seq_group.prefix is None:
-                return 1
-
-            if seq_group.prefix.is_on_gpu():
                 return 2
-            else:
-                # We have the prefix but it's elsewhere, so we want as much time
-                # as possible to swap it in.
-                return 0
+            match seq_group.prefix.location:
+                case PrefixLocation.GPU:
+                    return 3
+                case PrefixLocation.CPU:
+                    return 2
+                case PrefixLocation.DISK:
+                    return 1
+                case PrefixLocation.NONE:
+                    return 0
 
 class PREFIX_PRIORITY_EQ(Policy):
     
